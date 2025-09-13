@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  sis_backend:
+    build:
+      context: ../..
+      dockerfile: docker/dev/Dockerfile-dev
+    container_name: sis_backend
+    restart: always
+    env_file:
+      - envs/.env.app.prod
+    volumes:
+      - ../..:/app
+      - static:/app/static
+      - media:/app/media
+    ports:
+      - "7777:7777"
+    depends_on:
+      - sis_db
+    command: python manage.py runserver 0.0.0.0:7777
+
+  sis_db:
+    container_name: sis_db
+    image: postgres:15.2-alpine
+    restart: always
+    env_file:
+      - envs/.env.db.prod
+    ports:
+      - '7776:5432'
+    volumes:
+      - 'sis_db_data:/var/lib/postgresql/data'
+
+volumes:
+  sis_db_data:
+  static:
+  media:

@@ -1,0 +1,19 @@
+FROM python:3.10.0
+
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
+ENV TZ=Asia/Almaty
+
+WORKDIR /app
+
+RUN apt-get -y update && apt-get -y upgrade
+RUN apt-get install nano
+RUN pip install --upgrade pip
+
+COPY requirements.txt .
+
+RUN pip install -r requirements.txt
+
+COPY . .
+
+CMD ["python", "-u", "main.py"]

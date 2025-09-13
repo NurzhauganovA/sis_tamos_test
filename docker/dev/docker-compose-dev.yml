@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  sis_backend:
+    build:
+      context: ../..
+      dockerfile: docker/dev/Dockerfile-dev
+    container_name: sis_backend
+    restart: always
+    env_file:
+      - envs/.env.sis_backend.dev
+    volumes:
+      - ../..:/app
+      - static:/app/static
+      - media:/app/media
+    ports:
+      - 8080:8080
+    depends_on:
+      sis_db:
+        condition: service_healthy
+    # Исправлена команда - нельзя запускать две команды через &&
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8080"
+
+  sis_db:
+      container_name: sis_db
+      image: postgres:15.2-alpine
+      restart: always
+      env_file:
+          - envs/.env.sis_db.dev
+      volumes:
+          - 'sis_db_data:/var/lib/postgresql/data'
+          - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      healthcheck:
+          test: [ "CMD", "pg_isready", "-q", "-d", "sis", "-U", "postgres" ]
+          interval: 5s
+          timeout: 5s
+          retries: 5
+      ports:
+          - 7772:5432
+
+  sis_redis:
+    container_name: sis_redis
+    image: "redis:7.0-alpine"
+    restart: always
+    command: redis-server
+    ports:
+      - 6373:6379
+    volumes:
+      - redis_data:/var/lib/redis
+    env_file:
+      - envs/.env.sis_redis.dev
+
+  sis_celery_beat:
+    build:
+      context: ../..
+      dockerfile: docker/dev/Dockerfile-dev
+    container_name: sis_celery_beat
+    restart: always
+    env_file:
+      - envs/.env.sis_backend.dev
+    volumes:
+      - ../..:/app
+      - media:/app/media
+    depends_on:
+      sis_db:
+        condition: service_healthy
+    # Исправлена команда Celery
+    command: sh -c "sleep 10 && celery -A project_sis beat --loglevel=info"
+
+volumes:
+  sis_db_data:
+  redis_data:
+  static:
+  media:
