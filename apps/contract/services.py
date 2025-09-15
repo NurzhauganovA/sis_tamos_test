@@ -1107,7 +1107,7 @@ class ContractDownloadService:
                     docx_file = 'apps/contract/templates/contract/Договор_оказания_образовательных_услуг_КАЗ_ОТД_ТОО_по_месячно.docx'
             else:
                 if contract_school_direct == 'Кембридж':
-                    docx_file = 'apps/contract/templates/contract/Договор_оказания_образовательных_услуг_Кэмбридж_2023_2024_оплата_по_месячно.docx'
+                    docx_file = 'apps/contract/templates/contract/Договор оказания образовательных услуг Кэмбридж 2025-2026 УО_по_месячно.docx'
                 elif is_dop_contract:
                     if contract_school_direct == 'Лингвинистический':
                         docx_file = 'apps/contract/templates/contract/Договор_оказания_дополнительных_образовательных_услуг_Лингво_2023_по_месячно.docx'

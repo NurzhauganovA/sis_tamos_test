@@ -9,7 +9,7 @@ from .views import (
     ContractDownload,
     RawContractTemplateView,
     MarkedUpContractTemplateView,
-    ContractListReportView
+    ContractListReportView, SignatureVerificationView
 )
 from .views import (
     ContractSigningView,
@@ -43,6 +43,8 @@ contract_signature_patterns = [
 
     # Веб-интерфейс для тестирования подписания
     path('contracts/<str:contract_num>/sign-web/', ContractSigningWebView.as_view(), name='contract-sign-web'),
+
+    path('signature-verification/<str:signature_uid>/', SignatureVerificationView.as_view(), name='signature-verification'),
 ]
 
 urlpatterns = router.urls

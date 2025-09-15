@@ -575,6 +575,123 @@ class ContractSigningDataView(APIView):
         return contract_data
 
 
+class SignatureVerificationView(APIView):
+    """API для проверки подписи по QR-коду"""
+
+    permission_classes = [permissions.AllowAny]  # Публичный доступ для проверки
+
+    def get(self, request, signature_uid):
+        """
+        Получает информацию о подписи для отображения на фронтенде
+
+        Returns:
+        {
+            "success": true,
+            "signature_info": {
+                "signature_uid": "uuid",
+                "contract_num": "2024Д-1400",
+                "signer_iin": "123456789012",
+                "signed_at": "2024-01-15T10:30:00Z",
+                "is_valid": true,
+                "contract_info": {
+                    "student_name": "Иванов Иван Иванович",
+                    "contract_amount": "500000",
+                    "contract_date": "2024-01-10"
+                },
+                "certificate_info": {
+                    "common_name": "ИВАНОВ ИВАН ИВАНОВИЧ",
+                    "serial_number": "123456789",
+                    "valid_from": "2023-01-01",
+                    "valid_to": "2025-01-01"
+                }
+            }
+        }
+        """
+        try:
+            # Находим подпись
+            try:
+                signature = ContractSignature.objects.get(signature_uid=signature_uid)
+            except ContractSignature.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'Подпись не найдена',
+                    'error_code': 'SIGNATURE_NOT_FOUND'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Получаем информацию о контракте
+            try:
+                contract = ContractMS.objects.using('ms_sql').get(ContractNum=signature.contract_num)
+                contract_info = {
+                    'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract,
+                                                                                            'StudentID') and contract.StudentID else '',
+                    'contract_amount': str(contract.ContractAmount) if contract.ContractAmount else '',
+                    'contract_date': contract.ContractDate.isoformat() if contract.ContractDate else '',
+                    'contract_status': getattr(contract.ContractStatusID, 'sStatusName', '') if hasattr(contract,
+                                                                                                        'ContractStatusID') and contract.ContractStatusID else ''
+                }
+            except ContractMS.DoesNotExist:
+                contract_info = {
+                    'student_name': 'Информация недоступна',
+                    'contract_amount': '',
+                    'contract_date': '',
+                    'contract_status': ''
+                }
+
+            # Проверяем актуальность подписи
+            is_document_modified = signature.is_document_modified
+            if is_document_modified and signature.is_valid:
+                signature.is_valid = False
+                signature.save()
+
+            # Формируем ответ
+            signature_info = {
+                'signature_uid': str(signature.signature_uid),
+                'contract_num': signature.contract_num,
+                'signer_iin': signature.signer_iin,
+                'signed_at': signature.signed_at.isoformat(),
+                'is_valid': signature.is_valid,
+                'is_document_modified': is_document_modified,
+                'contract_info': contract_info,
+                'certificate_info': signature.certificate_info,
+                'verification_status': self._get_verification_status(signature, is_document_modified)
+            }
+
+            return Response({
+                'success': True,
+                'signature_info': signature_info
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error in signature verification: {e}")
+            return Response({
+                'success': False,
+                'error': f'Ошибка при проверке подписи: {str(e)}',
+                'error_code': 'INTERNAL_ERROR'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _get_verification_status(self, signature, is_document_modified):
+        """Определяет статус верификации подписи"""
+        if not signature.is_valid:
+            if is_document_modified:
+                return {
+                    'status': 'invalid',
+                    'message': 'Подпись недействительна: документ был изменен после подписания',
+                    'color': 'red'
+                }
+            else:
+                return {
+                    'status': 'invalid',
+                    'message': 'Подпись недействительна',
+                    'color': 'red'
+                }
+        else:
+            return {
+                'status': 'valid',
+                'message': 'Подпись действительна',
+                'color': 'green'
+            }
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class ContractSigningWebView(View):
     """Веб-интерфейс для подписания контрактов (для тестирования)"""
