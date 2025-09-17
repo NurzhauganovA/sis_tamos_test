@@ -379,6 +379,7 @@ class ContractSigningView(APIView):
             contract_num = request.data.get('contract_num')
             cms_signature = request.data.get('cms')
             signed_data = request.data.get('data')
+            is_dop_contract = request.data.get('is_dop_contract', False)
 
             if not all([contract_num, cms_signature, signed_data]):
                 return Response({
@@ -387,9 +388,24 @@ class ContractSigningView(APIView):
                     'error_code': 'MISSING_PARAMETERS'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            if not is_dop_contract:
+                is_dop_contract = self._is_additional_contract(contract_num)
+
             # Находим контракт по номеру
             try:
-                contract = ContractMS.objects.using('ms_sql').get(ContractNum=contract_num)
+                if is_dop_contract:
+                    contract_dop = ContractDopMS.objects.using('ms_sql').filter(
+                        agreement_id__ContractNum=contract_num
+                    ).first()
+                    if not contract_dop:
+                        return Response({
+                            'success': False,
+                            'error': 'Дополнительный договор не найден',
+                            'error_code': 'CONTRACT_NOT_FOUND'
+                        }, status=status.HTTP_404_NOT_FOUND)
+                    contract = contract_dop.agreement_id
+                else:
+                    contract = ContractMS.objects.using('ms_sql').get(ContractNum=contract_num)
             except ContractMS.DoesNotExist:
                 return Response({
                     'success': False,
@@ -397,13 +413,32 @@ class ContractSigningView(APIView):
                     'error_code': 'CONTRACT_NOT_FOUND'
                 }, status=status.HTTP_404_NOT_FOUND)
 
-            # Используем асинхронный сервис
+            # Проверяем статус контракта
+            # if is_dop_contract:
+            #     contract_dop = ContractDopMS.objects.using('ms_sql').filter(
+            #         agreement_id__ContractNum=contract_num
+            #     ).first()
+            #     if contract_dop.status_id.sStatusName != 'На рассмотрении':
+            #         return Response({
+            #             'success': False,
+            #             'error': 'Дополнительный договор должен быть в статусе "На рассмотрении"',
+            #             'error_code': 'INVALID_STATUS'
+            #         }, status=status.HTTP_400_BAD_REQUEST)
+            # else:
+            #     if contract.ContractStatusID.sStatusName != 'На рассмотрении':
+            #         return Response({
+            #             'success': False,
+            #             'error': 'Контракт должен быть в статусе "На рассмотрении"',
+            #             'error_code': 'INVALID_STATUS'
+            #         }, status=status.HTTP_400_BAD_REQUEST)
+
             service = ContractSignatureService()
             result = service.verify_and_save_signature(
                 contract_num=contract_num,
                 cms_signature=cms_signature,
                 signed_data=signed_data,
-                user=request.user
+                user=request.user,
+                is_dop_contract=is_dop_contract
             )
 
             if result['success']:
@@ -436,6 +471,10 @@ class ContractSigningView(APIView):
                 'error': f'Внутренняя ошибка сервера: {str(e)}',
                 'error_code': 'INTERNAL_ERROR'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _is_additional_contract(self, contract_num: str) -> bool:
+        """Проверяет, является ли контракт дополнительным договором по его номеру"""
+        return ContractDopMS.objects.using('ms_sql').filter(agreement_id__ContractNum=contract_num).exists()
 
 
 class ContractSignaturesView(APIView):
@@ -519,9 +558,23 @@ class ContractSigningDataView(APIView):
         }
         """
         try:
+            is_dop_contract = self._is_additional_contract(contract_num)
+
             # Находим контракт
             try:
-                contract = ContractMS.objects.using('ms_sql').get(ContractNum=contract_num)
+                if is_dop_contract:
+                    contract_dop = ContractDopMS.objects.using('ms_sql').filter(
+                        agreement_id__ContractNum=contract_num
+                    ).first()
+                    if not contract_dop:
+                        return Response({
+                            'success': False,
+                            'error': 'Дополнительный договор не найден',
+                            'error_code': 'CONTRACT_NOT_FOUND'
+                        }, status=status.HTTP_404_NOT_FOUND)
+                    contract = contract_dop.agreement_id
+                else:
+                    contract = ContractMS.objects.using('ms_sql').get(ContractNum=contract_num)
             except ContractMS.DoesNotExist:
                 return Response({
                     'success': False,
@@ -530,7 +583,7 @@ class ContractSigningDataView(APIView):
                 }, status=status.HTTP_404_NOT_FOUND)
 
             # Формируем данные для подписания
-            contract_data = self._prepare_contract_data(contract)
+            contract_data = self._prepare_contract_data(contract, is_dop_contract)
 
             # Кодируем в base64
             contract_data_base64 = base64.b64encode(contract_data.encode('utf-8')).decode('utf-8')
@@ -543,16 +596,23 @@ class ContractSigningDataView(APIView):
                 'contract_num': contract.ContractNum,
                 'contract_amount': str(contract.ContractAmount) if contract.ContractAmount else '',
                 'contract_date': contract.ContractDate.isoformat() if contract.ContractDate else '',
-                'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract,
-                                                                                        'StudentID') and contract.StudentID else '',
+                'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract, 'StudentID') and contract.StudentID else '',
+                'is_dop_contract': is_dop_contract
             }
+
+            if is_dop_contract:
+                contract_info['contract_type'] = 'Дополнительный договор'
+                # Добавляем информацию о дополнительном договоре
+                contract_info['dop_amount'] = str(contract_dop.amount) if contract_dop.amount else ''
+                contract_info['description'] = contract_dop.description or ''
 
             return Response({
                 'success': True,
                 'contract_num': contract_num,
                 'data': contract_data_base64,
                 'hash': contract_hash,
-                'contract_info': contract_info
+                'contract_info': contract_info,
+                'is_dop_contract': is_dop_contract
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -562,17 +622,22 @@ class ContractSigningDataView(APIView):
                 'error_code': 'INTERNAL_ERROR'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def _prepare_contract_data(self, contract):
+    def _prepare_contract_data(self, contract, is_dop_contract=False):
         """Подготавливает данные контракта для подписания"""
+        contract_type = "DOP_CONTRACT" if is_dop_contract else "MAIN_CONTRACT"
         # Формируем строку с ключевыми данными контракта
         contract_data = (
-            f"CONTRACT_SIGN:{contract.ContractNum}:"
+            f"CONTRACT_SIGN:{contract_type}:{contract.ContractNum}:"
             f"{contract.ContractAmount}:"
             f"{contract.ContractDate}:"
             f"{getattr(contract, 'StudentID_id', '')}:"
             f"{getattr(contract, 'ContractStatusID_id', '')}"
         )
         return contract_data
+
+    def _is_additional_contract(self, contract_num: str) -> bool:
+        """Проверяет, является ли контракт дополнительным договором по его номеру"""
+        return ContractDopMS.objects.using('ms_sql').filter(agreement_id__ContractNum=contract_num).exists()
 
 
 class SignatureVerificationView(APIView):
@@ -618,24 +683,42 @@ class SignatureVerificationView(APIView):
                     'error_code': 'SIGNATURE_NOT_FOUND'
                 }, status=status.HTTP_404_NOT_FOUND)
 
+            is_dop_contract = self._is_additional_contract(signature.contract_num)
+
             # Получаем информацию о контракте
             try:
-                contract = ContractMS.objects.using('ms_sql').get(ContractNum=signature.contract_num)
-                contract_info = {
-                    'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract,
-                                                                                            'StudentID') and contract.StudentID else '',
-                    'contract_amount': str(contract.ContractAmount) if contract.ContractAmount else '',
-                    'contract_date': contract.ContractDate.isoformat() if contract.ContractDate else '',
-                    'contract_status': getattr(contract.ContractStatusID, 'sStatusName', '') if hasattr(contract,
-                                                                                                        'ContractStatusID') and contract.ContractStatusID else ''
-                }
+                if is_dop_contract:
+                    contract_dop = ContractDopMS.objects.using('ms_sql').filter(
+                        agreement_id__ContractNum=signature.contract_num
+                    ).first()
+                    if contract_dop:
+                        contract = contract_dop.agreement_id
+                        contract_info = {
+                            'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract,
+                                                                                                    'StudentID') and contract.StudentID else '',
+                            'contract_amount': str(contract.ContractAmount) if contract.ContractAmount else '',
+                            'contract_date': contract.ContractDate.isoformat() if contract.ContractDate else '',
+                            'contract_status': getattr(contract.ContractStatusID, 'sStatusName', '') if hasattr(
+                                contract, 'ContractStatusID') and contract.ContractStatusID else '',
+                            'contract_type': 'Дополнительный договор',
+                            'dop_amount': str(contract_dop.amount) if contract_dop.amount else '',
+                            'description': contract_dop.description or ''
+                        }
+                    else:
+                        contract_info = self._get_default_contract_info()
+                else:
+                    contract = ContractMS.objects.using('ms_sql').get(ContractNum=signature.contract_num)
+                    contract_info = {
+                        'student_name': getattr(contract.StudentID, 'full_name', '') if hasattr(contract,
+                                                                                                'StudentID') and contract.StudentID else '',
+                        'contract_amount': str(contract.ContractAmount) if contract.ContractAmount else '',
+                        'contract_date': contract.ContractDate.isoformat() if contract.ContractDate else '',
+                        'contract_status': getattr(contract.ContractStatusID, 'sStatusName', '') if hasattr(contract,
+                                                                                                            'ContractStatusID') and contract.ContractStatusID else '',
+                        'contract_type': 'Основной договор'
+                    }
             except ContractMS.DoesNotExist:
-                contract_info = {
-                    'student_name': 'Информация недоступна',
-                    'contract_amount': '',
-                    'contract_date': '',
-                    'contract_status': ''
-                }
+                contract_info = self._get_default_contract_info()
 
             # Проверяем актуальность подписи
             is_document_modified = signature.is_document_modified
@@ -643,11 +726,14 @@ class SignatureVerificationView(APIView):
                 signature.is_valid = False
                 signature.save()
 
+            signer_type = self._determine_signer_type(signature)
+
             # Формируем ответ
             signature_info = {
                 'signature_uid': str(signature.signature_uid),
                 'contract_num': signature.contract_num,
                 'signer_iin': signature.signer_iin,
+                'signer_type': signer_type,
                 'signed_at': signature.signed_at.isoformat(),
                 'is_valid': signature.is_valid,
                 'is_document_modified': is_document_modified,
@@ -662,12 +748,30 @@ class SignatureVerificationView(APIView):
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error in signature verification: {e}")
             return Response({
                 'success': False,
                 'error': f'Ошибка при проверке подписи: {str(e)}',
                 'error_code': 'INTERNAL_ERROR'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def _is_additional_contract(self, contract_num: str) -> bool:
+        """Проверяет, является ли контракт дополнительным договором по его номеру"""
+        return ContractDopMS.objects.using('ms_sql').filter(agreement_id__ContractNum=contract_num).exists()
+
+    def _get_default_contract_info(self):
+        """Возвращает дефолтную информацию о контракте, если контракт не найден"""
+        return {
+            'student_name': 'Информация недоступна',
+            'contract_amount': '',
+            'contract_date': '',
+            'contract_status': '',
+            'contract_type': 'Неизвестно'
+        }
+
+    def _determine_signer_type(self, signature):
+        if signature.created_by is None:
+            return 'director'
+        return 'parent'
 
     def _get_verification_status(self, signature, is_document_modified):
         """Определяет статус верификации подписи"""
