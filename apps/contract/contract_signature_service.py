@@ -498,25 +498,25 @@ class ContractSignatureService:
             if director_type == 'omarov':
                 director_data = {
                     "type": "director_signature",
-                    "director": "Омаров",
+                    "director": "Сериков",
                     "position": "Директор",
                     "contract_num": contract_num,
                     "signed_at": datetime.now().isoformat(),
                     "certificate_info": {
-                        "serial_number": "93af8264ee9fabcf9123ae0c4c2d1373c31cb126",
-                        "common_name": "ОМАРОВ"
+                        "serial_number": "IIN861205300997",
+                        "common_name": "СЕРИКОВ БАУЫРЖАН"
                     }
                 }
             elif director_type == 'serikov':
                 director_data = {
                     "type": "director_signature",
                     "director": "Сериков",
-                    "position": "Заместитель директора",
+                    "position": "Директор",
                     "contract_num": contract_num,
                     "signed_at": datetime.now().isoformat(),
                     "certificate_info": {
-                        "serial_number": "ac509efd146861ebcba1a4c0ceca04df1fd1ac1b",
-                        "common_name": "СЕРИКОВ"
+                        "serial_number": "IIN861205300997",
+                        "common_name": "СЕРИКОВ БАУЫРЖАН"
                     }
                 }
             else:
@@ -601,6 +601,7 @@ class ContractSignatureService:
         from datetime import timedelta
         import math
         from num2words import num2words
+        from io import BytesIO
 
         # Получаем данные контракта
         try:
@@ -634,7 +635,7 @@ class ContractSignatureService:
             # Расчет суммы со скидкой
             discount = DiscountMS.objects.using('ms_sql').all()
             contract_discount = ContractDiscountMS.objects.using('ms_sql').filter(ContractID=contract)
-            contract_amount = float(contract.ContractAmount)
+            contract_amount = float(contract.ContractAmount) if contract.ContractAmount else 0
 
             if contract_discount.exists():
                 for i in contract_discount:
@@ -677,10 +678,14 @@ class ContractSignatureService:
                 text = text.replace('{ContractDay}',
                                     str(contract.ContractDate.strftime("%d")) if contract.ContractDate else '')
 
+                # Год окончания контракта
+                if contract.ContractDate:
+                    data_close = contract.ContractDate + timedelta(days=365)
+                    text = text.replace('{ContractYearFinish}', str(data_close.strftime("%Y")))
+
                 # Месяцы на разных языках
                 if contract.ContractDate:
                     try:
-                        from translate import Translator
                         month_ru = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
                                                                                "ru")
                         month_kz = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
@@ -694,11 +699,6 @@ class ContractSignatureService:
                         text = text.replace('{ContractMonthRUS}', contract.ContractDate.strftime("%B"))
                         text = text.replace('{ContractMonthKAZ}', contract.ContractDate.strftime("%B"))
                         text = text.replace('{ContractMonthENG}', contract.ContractDate.strftime("%B"))
-
-                # Год окончания контракта
-                if contract.ContractDate:
-                    data_close = contract.ContractDate + timedelta(days=365)
-                    text = text.replace('{ContractYearFinish}', str(data_close.strftime("%Y")))
 
                 # Учебный год
                 if contract.EduYearID:
@@ -771,7 +771,7 @@ class ContractSignatureService:
                     text = text.replace('{ContractContrWordsKaz}', 'нөл')
                     text = text.replace('{ContractContrWordsEng}', 'zero')
 
-                # Тексты для QR-кодов
+                # Тексты для QR-кодов и правовые тексты
                 text = text.replace('{QRCodeTextRus}',
                                     'QR-код содержит данные об электронно-цифровой подписи подписанта')
                 text = text.replace('{QRCodeTextKaz}',
@@ -790,9 +790,17 @@ class ContractSignatureService:
         for paragraph in doc.paragraphs:
             for run in paragraph.runs:
                 # Сначала заменяем текстовые переменные
-                if any(var in run.text for var in
-                       ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}']):
-                    run.text = replace_variables_in_text(run.text)
+                original_text = run.text
+                if any(var in original_text for var in
+                       ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}',
+                        '{ContractDay}', '{ContractMonthRUS}', '{ContractMonthKAZ}', '{ContractMonthENG}',
+                        '{police_kaz}', '{police_rus}', '{QRCodeTextRus}', '{QRCodeTextKaz}',
+                        '{EduYear}', '{StudentIIN}', '{ParentIIN}', '{ParentPassport}', '{ParentPassportKAZ}',
+                        '{ParentPassportENG}', '{ContractSum}', '{ContractContr}', '{ContractAmountWords}',
+                        '{ContractSumWords}', '{ContractContrWords}', '{ContractAmountWithDiscount}',
+                        '{ContractDopAmount}', '{StudentAddress}', '{ParentAddress}', '{StudentPhoneNumber}',
+                        '{ParentPhoneNumber}']):
+                    run.text = replace_variables_in_text(original_text)
 
                 # Затем обрабатываем QR-коды
                 if '{QRCode}' in run.text or '{QRCodeSignature}' in run.text:
@@ -828,9 +836,19 @@ class ContractSignatureService:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
                             # Заменяем текстовые переменные в таблицах
-                            if any(var in run.text for var in
-                                   ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}']):
-                                run.text = replace_variables_in_text(run.text)
+                            original_text = run.text
+                            if any(var in original_text for var in
+                                   ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}',
+                                    '{ContractDay}', '{ContractMonthRUS}', '{ContractMonthKAZ}', '{ContractMonthENG}',
+                                    '{police_kaz}', '{police_rus}', '{QRCodeTextRus}', '{QRCodeTextKaz}',
+                                    '{EduYear}', '{StudentIIN}', '{ParentIIN}', '{ParentPassport}',
+                                    '{ParentPassportKAZ}',
+                                    '{ParentPassportENG}', '{ContractSum}', '{ContractContr}', '{ContractAmountWords}',
+                                    '{ContractSumWords}', '{ContractContrWords}', '{ContractAmountWithDiscount}',
+                                    '{ContractDopAmount}', '{StudentAddress}', '{ParentAddress}',
+                                    '{StudentPhoneNumber}',
+                                    '{ParentPhoneNumber}']):
+                                run.text = replace_variables_in_text(original_text)
 
                             # QR-коды в таблицах
                             if '{QRCode}' in run.text or '{QRCodeSignature}' in run.text:
@@ -1072,25 +1090,53 @@ class ContractSignatureService:
         try:
             # Данные директора Омарова (заглушка - позже заполните реальными данными)
             director_omarov_data = {
-                "iin": "000000000000",  # Заполните реальным ИИН
-                "full_name": "ОМАРОВ",
+                "iin": "861205300997",
+                "full_name": "СЕРИКОВ",
                 "position": "Директор",
                 "certificate_info": {
-                    "serial_number": "93af8264ee9fabcf9123ae0c4c2d1373c31cb126",
-                    "common_name": "ОМАРОВ"
+                    "valid": True,
+                    "issuer": {
+                        "dn": "C=KZ, CN=ҰЛТТЫҚ КУӘЛАНДЫРУШЫ ОРТАЛЫҚ (GOST) 2022",
+                        "country": "KZ",
+                        "commonName": "ҰЛТТЫҚ КУӘЛАНДЫРУШЫ ОРТАЛЫҚ (GOST) 2022"
+                    },
+                    "signAlg": "ECGOST3410-2015-512",
+                    "subject": {
+                        "dn": "GIVENNAME=СЕРИКОВИЧ, OU=BIN990440006939, O=\"Учреждение образования \\\"Тамос Эдьюкейшн Физико-Математическая Школа\\\"\", C=KZ, SERIALNUMBER=IIN861205300997, SURNAME=СЕРИКОВ, CN=СЕРИКОВ БАУЫРЖАН",
+                        "bin": "990440006939",
+                        "iin": "861205300997",
+                        "country": "KZ",
+                        "surName": "СЕРИКОВ",
+                        "commonName": "СЕРИКОВ БАУЫРЖАН",
+                        "organization": "Учреждение образования \"Тамос Эдьюкейшн Физико-Математическая Школа\""
+                    },
+                    "keyUsage": "SIGN",
+                    "validity": {
+                        "notAfter": "2025-12-23T04:55:06.000+00:00",
+                        "notBefore": "2024-12-23T04:55:06.000+00:00"
+                    },
+                    "revocations": [
+                        {
+                            "by": "OCSP",
+                            "reason": "OK",
+                            "revoked": False,
+                            "revocationTime": None
+                        }
+                    ],
+                    "serialNumber": "68492d0fd4cf74f7a417701044aef2663bff78a2"
                 }
             }
 
             # Создаем подпись директора с ТЕМ ЖЕ хэшем что и у родителя
             director_signature = ContractSignature.objects.create(
                 contract_num=contract_num,
-                cms_signature="",  # Заполните данными сертификата директора
-                signed_data="",   # Заполните подписанными данными
+                cms_signature="",
+                signed_data="",
                 document_hash=document_hash,  # Используем ПЕРЕДАННЫЙ хэш
                 signer_iin=director_omarov_data["iin"],
                 certificate_info=director_omarov_data["certificate_info"],
                 is_valid=True,
-                created_by=None  # Системная подпись
+                created_by=None
             )
 
             logger.info(f"Director signature added for contract {contract_num} with hash {document_hash[:16]}...")
