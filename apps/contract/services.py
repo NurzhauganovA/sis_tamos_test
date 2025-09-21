@@ -34,6 +34,480 @@ class GetQuerySet:
         return model.objects.using('ms_sql').filter(**{filter_argument: filter_value})
 
 
+class ContractService:
+    """
+        Сервис для получения данных о договоре студента.
+        Договоров может быть несколько, поэтому возвращается список.
+        Договор ищется по ID студента.
+    """
+
+    def __init__(self, contract) -> None:
+        self.contract = contract
+
+    @staticmethod
+    def get_queryset(model, filter_argument, filter_value):
+        """ Фильтрация данных по переданному аргументу """
+        return model.objects.using('ms_sql').filter(**{filter_argument: filter_value})
+
+    def sum_month_pay(self, contract_id=None) -> float:
+        sum_month_pay = self.get_queryset(ContractMonthPayMS, 'ContractID', contract_id)
+        amount = 0
+        for sum_month in sum_month_pay:
+            amount += sum_month.MonthSum
+
+        return float(amount)
+
+    def sum_transactions_without_contribution(self, contract_id=None) -> float:
+        sum_transactions = self.get_queryset(TransactionMS, 'agreement_id', contract_id)
+        amount = 0
+        for sum_transaction in sum_transactions:
+            if sum_transaction.contribution == 0:
+                amount += sum_transaction.amount
+
+        return float(amount)
+
+    def sum_transactions_month_pay(self, contract_student_filter=None) -> list:
+        sum_transactions_list = list()
+        for contract_student in contract_student_filter:
+            agreement_id = contract_student.id
+            if agreement_id in sum_transactions_list:
+                continue
+
+            transaction = self.get_queryset(TransactionMS, 'agreement_id', agreement_id)
+            if transaction.exists():
+                sum_month_pay = self.sum_month_pay(contract_id=agreement_id)
+                sum_transactions_list.append((f'{agreement_id}', sum_month_pay))
+
+        return sum_transactions_list
+
+    def calculate_arrears(self, contract_num):
+        # Получите контракт по номеру
+        contract = self.contract.filter(ContractNum=contract_num).first()
+        if not contract:
+            return Decimal(0)  # Возвращайте 0, если контракт не найден
+
+            # Получите общую сумму платежей за контракт и преобразуйте ее в Decimal
+        total_payments = Decimal(self.sum_month_pay(contract.id))
+
+        # Получите общую сумму транзакций без взносов за контракт и преобразуйте ее в Decimal
+        total_transactions = Decimal(self.sum_transactions_without_contribution(contract.id))
+
+        # Вычислите задолженность как разницу между суммой контракта и общей суммой платежей и транзакций
+        arrears = contract.ContractSum - (total_payments + total_transactions)
+
+        return arrears
+
+    def get_value_of_arrears_with_contract_num(self, contract_num):
+        contract = self.contract
+        contract_student_filter = contract.filter(ContractNum=contract_num)
+        serializer = ContractSerializer(contract_student_filter, many=True)
+
+        # Вычислите задолженность и добавьте ее к данным договора
+        arrears = self.calculate_arrears(contract_num)  # Замените на вашу функцию для вычисления задолженности
+        serializer_data = serializer.data
+        if serializer_data:
+            serializer_data[0]['Arrears'] = arrears
+
+        return serializer_data[0]
+
+    def set_arrears_from_sum_transactions(self, contract_student_filter=None, serializer_data=None) -> None:
+        sum_transactions_list = self.sum_transactions_month_pay(contract_student_filter=contract_student_filter)
+
+        for ser in serializer_data:
+            for transactions in sum_transactions_list:
+                sum_transactions = float(transactions[1])
+
+                if ser['id'] == int(transactions[0]):
+                    if sum_transactions > 0:
+                        arrears_value = round(float(sum_transactions) - self.sum_transactions_without_contribution(contract_id=transactions[0]), 2)
+
+                        if arrears_value < 1:
+                            arrears_value = 0
+                        ser['Arrears'] = math.ceil(arrears_value)
+                    else:
+                        ser['Arrears'] = 0
+
+    def set_discount_to_contract(self, contract_student_filter=None, serializer_data=None) -> None:
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        discount = ContractDiscountMS.objects.using('ms_sql').get(ContractID=contract_student.id)
+
+                        discount_data = {
+                            "DiscountID": str(discount.DiscountID),
+                            "DiscountName": str(discount.DiscountID.sDiscountName),
+                            "DiscountPercent": str(discount.DiscountID.iDiscountPercent),
+                            "DiscountType": str(discount.DiscountID.iDiscountType.sDiscountType),
+                            "DiscountSum": str(discount.DiscountSum)
+                        }
+
+                        ser['Discount'] = dict(discount_data)
+                    except ObjectDoesNotExist:
+                        ser['Discount'] = None
+                    except MultipleObjectsReturned:
+                        discount = ContractDiscountMS.objects.using('ms_sql').filter(ContractID=contract_student.id).last()
+
+                        discount_data = {
+                            "DiscountID": str(discount.DiscountID),
+                            "DiscountName": str(discount.DiscountID.sDiscountName),
+                            "DiscountPercent": str(discount.DiscountID.iDiscountPercent),
+                            "DiscountType": str(discount.DiscountID.iDiscountType.sDiscountType),
+                            "DiscountSum": str(discount.DiscountSum)
+                        }
+
+                        ser['Discount'] = dict(discount_data)
+
+    @staticmethod
+    def set_history_of_month_pays(contract_student_filter=None, serializer_data=None):
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        history_pays = TransactionMS.objects.using('ms_sql').filter(agreement_id=contract_student.id)
+                        transactions = []
+
+                        for pay in history_pays:
+                            transactions.append({
+                                "Amount": str(pay.amount),
+                                "Description": str(pay.description),
+                                "Date": str(pay.trans_date.strftime("%d.%m.%Y")),
+                                "Bank": str(pay.bank_id),
+                                "PaymentType": str(pay.payment_type.sPaymentType)
+                            })
+
+                        ser['HistoryTransactions'] = list(transactions)
+                    except ObjectDoesNotExist:
+                        ser['HistoryTransactions'] = []
+
+    def get_value_of_arrears(self, contract_num):
+        try:
+            contract = self.contract
+            contract_student_filter = contract.filter(ContractNum=contract_num)
+            serializer = ContractSerializer(contract_student_filter, many=True)
+            self.set_arrears_from_sum_transactions(
+                contract_student_filter=contract_student_filter,
+                serializer_data=serializer.data
+            )
+            return serializer.data[0]['Arrears']
+        except IndexError:
+            return None
+        except KeyError:
+            return None
+
+    def get_contract(self, student_id=None) -> Response | JsonResponse:
+        contract = self.contract
+        contract_student_filter = contract.filter(StudentID=student_id)
+        print("CONTRACT:", contract_student_filter)
+
+        if not contract_student_filter.exists():
+            return Response({'error': 'Contract not found'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ContractSerializer(contract_student_filter, many=True)
+        self.set_arrears_from_sum_transactions(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        self.set_discount_to_contract(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        self.set_history_of_month_pays(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+
+        return JsonResponse(serializer.data, safe=False)
+
+
+class ContractFoodService:
+    def __init__(self, contract) -> None:
+        self.contract = contract
+
+    @staticmethod
+    def get_queryset(model, filter_argument, filter_value):
+        """ Фильтрация данных по переданному аргументу """
+        return model.objects.using('ms_sql').filter(**{filter_argument: filter_value})
+
+    def sum_month_pay(self, contract_id=None) -> float:
+        sum_month_pay = self.get_queryset(ContractFoodMonthPayMS, 'ContractID', contract_id)
+        amount = 0
+        for sum_month in sum_month_pay:
+            amount += sum_month.MonthSum
+
+        return float(amount)
+
+    def sum_transactions_without_contribution(self, contract_id=None) -> float:
+        sum_transactions = self.get_queryset(TransactionFoodMS, 'contract_id', contract_id)
+        amount = 0
+        for sum_transaction in sum_transactions:
+            amount += sum_transaction.amount
+
+        return float(amount)
+
+    def sum_transactions_month_pay(self, contract_student_filter=None) -> list:
+        sum_transactions_list = list()
+        for contract_student in contract_student_filter:
+            agreement_id = contract_student.id
+            if agreement_id in sum_transactions_list:
+                continue
+
+            transaction = self.get_queryset(TransactionFoodMS, 'contract_id', agreement_id)
+            if transaction.exists():
+                sum_month_pay = self.sum_month_pay(contract_id=agreement_id)
+                sum_transactions_list.append((f'{agreement_id}', sum_month_pay))
+
+        return sum_transactions_list
+
+    def get_value_of_arrears(self, contract_num):
+        contract = self.contract
+        contract_student_filter = contract.filter(ContractNum=contract_num)
+        serializer = ContractSerializer(contract_student_filter, many=True)
+        self.set_arrears_from_sum_transactions(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        return serializer.data[0]['Arrears']
+
+    def set_arrears_from_sum_transactions(self, contract_student_filter=None, serializer_data=None) -> None:
+        sum_transactions_list = self.sum_transactions_month_pay(contract_student_filter=contract_student_filter)
+
+        for ser in serializer_data:
+            for transactions in sum_transactions_list:
+                sum_transactions = float(transactions[1])
+
+                if ser['id'] == int(transactions[0]):
+                    if sum_transactions > 0:
+                        arrears_value = round(float(sum_transactions) - self.sum_transactions_without_contribution(
+                            contract_id=transactions[0]), 2)
+
+                        if arrears_value < 1:
+                            arrears_value = 0
+                        ser['Arrears'] = math.ceil(arrears_value)
+                    else:
+                        ser['Arrears'] = 0
+
+    def set_discount_to_contract_food(self, contract_student_filter=None, serializer_data=None) -> None:
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        discount = ContractFoodDiscountMS.objects.using('ms_sql').get(ContractID=contract_student.id)
+
+                        discount_data = {
+                            "DiscountID": str(discount.DiscountID),
+                            "DiscountName": str(discount.DiscountID.sDiscountName),
+                            "DiscountPercent": str(discount.DiscountID.iDiscountPercent),
+                            "DiscountType": str(discount.DiscountID.iDiscountType.sDiscountType),
+                            "DiscountSum": str(discount.DiscountSum)
+                        }
+
+                        ser['Discount'] = dict(discount_data)
+                    except ObjectDoesNotExist:
+                        ser['Discount'] = None
+
+    @staticmethod
+    def set_history_of_month_pays_food(contract_student_filter=None, serializer_data=None):
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        history_pays = TransactionFoodMS.objects.using('ms_sql').filter(contract_id=contract_student.id)
+                        transactions = []
+
+                        for pay in history_pays:
+                            transactions.append({
+                                "Amount": str(pay.amount),
+                                "Description": str(pay.description),
+                                "Date": str(pay.trans_date.strftime("%d.%m.%Y")),
+                                "Bank": str(pay.bank_id)
+                            })
+
+                        ser['HistoryTransactions'] = list(transactions)
+                    except ObjectDoesNotExist:
+                        ser['HistoryTransactions'] = []
+
+    @staticmethod
+    def set_detail_contract_food(contract_student_filter=None, serializer_data=None):
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        pays = ContractFoodMonthPayMS.objects.using('ms_sql').filter(ContractID=contract_student.id)
+                        month_pays = []
+                        for pay in pays:
+                            month_pays.append({
+                                "MonthAmount": str(pay.MonthAmount),
+                                "MonthSum": str(pay.MonthSum),
+                                "PayDateM": str(pay.PayDateM.strftime("%d.%m.%Y"))
+                            })
+
+                        ser['DetailContract'] = list(month_pays)
+                    except ObjectDoesNotExist:
+                        ser['DetailContract'] = []
+
+    def get_contract_food(self, student_id=None) -> Response:
+        contract = self.contract
+        contract_student_filter = contract.filter(StudentID=student_id)
+
+        if not contract_student_filter.exists():
+            return Response({'error': 'Contract not found'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ContractFoodSerializer(contract_student_filter, many=True)
+        self.set_arrears_from_sum_transactions(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        self.set_discount_to_contract_food(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        self.set_history_of_month_pays_food(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+        self.set_detail_contract_food(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+
+        return Response(serializer.data)
+
+
+class ContractDriverService:
+    def __init__(self, contract) -> None:
+        self.contract = contract
+
+    @staticmethod
+    def get_queryset(model, filter_argument, filter_value):
+        """ Фильтрация данных по переданному аргументу """
+        return model.objects.using('ms_sql').filter(**{filter_argument: filter_value})
+
+    def sum_month_pay(self, contract_id=None) -> float:
+        sum_month_pay = self.get_queryset(ContractDriverMonthPayMS, 'ContractID', contract_id)
+        amount = 0
+        for sum_month in sum_month_pay:
+            amount += sum_month.MonthAmount
+
+        return float(amount)
+
+    def sum_transactions_without_contribution(self, contract_id=None) -> float:
+        sum_transactions = self.get_queryset(TransactionDriverMS, 'ContractID', contract_id)
+        amount = 0
+        for sum_transaction in sum_transactions:
+            amount += sum_transaction.Amount
+
+        return float(amount)
+
+    def sum_transactions_month_pay(self, contract_student_filter=None) -> list:
+        sum_transactions_list = list()
+        for contract_student in contract_student_filter:
+            agreement_id = contract_student.id
+            if agreement_id in sum_transactions_list:
+                continue
+
+            transaction = self.get_queryset(TransactionDriverMS, 'ContractID', agreement_id)
+            if transaction.exists():
+                sum_month_pay = self.sum_month_pay(contract_id=agreement_id)
+                sum_transactions_list.append((f'{agreement_id}', sum_month_pay))
+
+        return sum_transactions_list
+
+    def get_value_of_arrears(self, contract_num):
+        contract = self.contract
+        contract_student_filter = contract.filter(ContractNum=contract_num)
+        serializer = ContractSerializer(contract_student_filter, many=True)
+        self.set_arrears_from_sum_transactions(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+
+        try:
+            return serializer.data[0]['Arrears']
+        except KeyError:
+            return 0
+
+    def set_arrears_from_sum_transactions(self, contract_student_filter=None, serializer_data=None) -> None:
+        sum_transactions_list = self.sum_transactions_month_pay(contract_student_filter=contract_student_filter)
+
+        for ser in serializer_data:
+            for transactions in sum_transactions_list:
+                sum_transactions = float(transactions[1])
+
+                if ser['id'] == int(transactions[0]):
+                    if sum_transactions > 0:
+                        arrears_value = round(float(sum_transactions) - self.sum_transactions_without_contribution(
+                            contract_id=transactions[0]), 2)
+
+                        if arrears_value < 1:
+                            arrears_value = 0
+                        ser['Arrears'] = math.ceil(arrears_value)
+                    else:
+                        ser['Arrears'] = 0
+
+    @staticmethod
+    def set_history_of_month_pays_driver(contract_student_filter=None, serializer_data=None):
+        for ser in serializer_data:
+            for contract_student in contract_student_filter:
+                if ser['id'] == contract_student.id:
+                    try:
+                        history_pays = TransactionDriverMS.objects.using('ms_sql').filter(ContractID=contract_student.id)
+                        transactions = []
+
+                        for pay in history_pays:
+                            transactions.append({
+                                "Amount": str(pay.Amount),
+                                "Description": str(pay.Description),
+                                "Date": str(pay.TransactionDate.strftime("%d.%m.%Y")),
+                                "Bank": str(pay.BankID)
+                            })
+
+                        ser['HistoryTransactions'] = list(transactions)
+                    except ObjectDoesNotExist:
+                        ser['HistoryTransactions'] = []
+
+    def get_contract_driver(self, student_id=None) -> Response:
+        contract = self.contract
+        contract_student_filter = contract.filter(StudentID=student_id)
+
+        if not contract_student_filter.exists():
+            return Response({'error': 'Contract not found'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = ContractDriverSerializer(contract_student_filter, many=True)
+        self.set_arrears_from_sum_transactions(
+            contract_student_filter=contract_student_filter,
+            serializer_data=serializer.data
+        )
+
+        return Response(serializer.data)
+
+
+class GetContractFromDBService:
+    """ Получение договора по номеру из базы данных """
+
+    @staticmethod
+    def get_contract(contract_num, is_dop_contract):
+        if is_dop_contract:
+            try:
+                contract = ContractDopFileUser.objects.get(contractNum=contract_num)
+            except ContractDopFileUser.DoesNotExist:
+                contract = None
+            except ContractDopFileUser.MultipleObjectsReturned:
+                contract = ContractDopFileUser.objects.filter(contractNum=contract_num).last()
+        else:
+            try:
+                contract = ContractFileUser.objects.get(contractNum=contract_num)
+            except ContractFileUser.DoesNotExist:
+                contract = None
+            except ContractFileUser.MultipleObjectsReturned:
+                contract = ContractFileUser.objects.filter(contractNum=contract_num).last()
+
+        if contract is not None:
+            return contract
+
+        return None
+
+
 class ChangeDocumentContentService:
     """
         Сервис для изменения содержимого документа.

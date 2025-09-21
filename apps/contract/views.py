@@ -189,11 +189,8 @@ class ContractDownload(ModelViewSet):
 
         if 'Д' in contract_num:
             try:
-                print("Fetching contract with 'Д' in contract_num")
                 contracts = ContractMS.objects.using('ms_sql').all()
-                print("Length of contracts:", len(contracts))
                 contract = ContractMS.objects.using('ms_sql').get(ContractNum=contract_num)
-                print(f"Found contract: {contract}")
             except ContractMS.DoesNotExist:
                 contract = None
         elif 'П' in contract_num:
@@ -226,7 +223,6 @@ class ContractDownload(ModelViewSet):
 
         try:
             selected_contract, is_dop_contract = self.get_object()
-            print(f"Selected contract: {selected_contract}, is_dop_contract: {is_dop_contract}")
             contract_num = self.contract_download_service.contract_download(
                 request, contract_num=selected_contract.ContractNum, is_dop_contract=is_dop_contract
             )
@@ -414,23 +410,35 @@ class ContractSigningView(APIView):
                 }, status=status.HTTP_404_NOT_FOUND)
 
             # Проверяем статус контракта
-            # if is_dop_contract:
-            #     contract_dop = ContractDopMS.objects.using('ms_sql').filter(
-            #         agreement_id__ContractNum=contract_num
-            #     ).first()
-            #     if contract_dop.status_id.sStatusName != 'На рассмотрении':
-            #         return Response({
-            #             'success': False,
-            #             'error': 'Дополнительный договор должен быть в статусе "На рассмотрении"',
-            #             'error_code': 'INVALID_STATUS'
-            #         }, status=status.HTTP_400_BAD_REQUEST)
-            # else:
-            #     if contract.ContractStatusID.sStatusName != 'На рассмотрении':
-            #         return Response({
-            #             'success': False,
-            #             'error': 'Контракт должен быть в статусе "На рассмотрении"',
-            #             'error_code': 'INVALID_STATUS'
-            #         }, status=status.HTTP_400_BAD_REQUEST)
+            if is_dop_contract:
+                contract_dop = ContractDopMS.objects.using('ms_sql').filter(
+                    agreement_id__ContractNum=contract_num
+                ).first()
+                if contract_dop.status_id.sStatusName != 'На рассмотрении':
+                    return Response({
+                        'success': False,
+                        'error': 'Дополнительный договор должен быть в статусе "На рассмотрении"',
+                        'error_code': 'INVALID_STATUS'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                if contract_dop.agreement_id.ContractDate < datetime.now().year - 1:
+                    return Response({
+                        'success': False,
+                        'error': 'Дополнительный договор должно быть создано только на текущий год',
+                        'error_code': 'INVALID DATE'
+                    })
+            else:
+                if contract.ContractStatusID.sStatusName != 'На рассмотрении':
+                    return Response({
+                        'success': False,
+                        'error': 'Контракт должен быть в статусе "На рассмотрении"',
+                        'error_code': 'INVALID_STATUS'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                if contract.ContractDate < datetime.now().year - 1:
+                    return Response({
+                        'success': False,
+                        'error': 'Договор должно быть создано только на текущий год',
+                        'error_code': 'INVALID DATE'
+                    })
 
             service = ContractSignatureService()
             result = service.verify_and_save_signature(

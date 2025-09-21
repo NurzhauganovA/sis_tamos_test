@@ -130,7 +130,7 @@ class ContractSignatureService:
                         contract_num=contract_num,
                         cms_signature=cms_signature,
                         signed_data=signed_data,
-                        document_hash=document_hash,  # Хэш НОВОГО документа
+                        document_hash=document_hash,
                         signer_iin=verification_result['iin'],
                         certificate_info=verification_result.get('certificate_info', {}),
                         is_valid=True,
@@ -148,7 +148,7 @@ class ContractSignatureService:
                         contract.save(using='ms_sql')
 
                     # 5. Добавляем подпись директора (автоматически) с тем же хэшем
-                    self._add_director_signature(contract_num, signature, document_hash)
+                    self._add_director_signature(contract_num, signature, document_hash, signed_data=signed_data)
 
                     logger.info(f"Transaction completed successfully for contract {contract_num}")
 
@@ -498,19 +498,19 @@ class ContractSignatureService:
             if director_type == 'omarov':
                 director_data = {
                     "type": "director_signature",
-                    "director": "Сериков",
+                    "director": "ОМАРОВ",
                     "position": "Директор",
                     "contract_num": contract_num,
                     "signed_at": datetime.now().isoformat(),
                     "certificate_info": {
-                        "serial_number": "IIN861205300997",
-                        "common_name": "СЕРИКОВ БАУЫРЖАН"
+                        "serial_number": "IIN540217301387",
+                        "common_name": "ОМАРОВ МУРАТ"
                     }
                 }
             elif director_type == 'serikov':
                 director_data = {
                     "type": "director_signature",
-                    "director": "Сериков",
+                    "director": "СЕРИКОВ",
                     "position": "Директор",
                     "contract_num": contract_num,
                     "signed_at": datetime.now().isoformat(),
@@ -665,199 +665,27 @@ class ContractSignatureService:
             ParentPassportKAZ = "Паспорт деректері қолжетімсіз"
             ParentPassportENG = "Passport data unavailable"
 
-        # Функция для замены переменных в тексте
-        def replace_variables_in_text(text):
-            """Заменяет все переменные в тексте"""
-            try:
-                # Основные данные контракта
-                text = text.replace('{ContractNum}', str(contract.ContractNum) if contract.ContractNum else '')
-                text = text.replace('{ContractYear}',
-                                    str(contract.ContractDate.strftime("%Y")) if contract.ContractDate else '')
-                text = text.replace('{ContractDate}',
-                                    str(contract.ContractDate.strftime("%d.%m.%Y")) if contract.ContractDate else '')
-                text = text.replace('{ContractDay}',
-                                    str(contract.ContractDate.strftime("%d")) if contract.ContractDate else '')
-
-                # Год окончания контракта
-                if contract.ContractDate:
-                    data_close = contract.ContractDate + timedelta(days=365)
-                    text = text.replace('{ContractYearFinish}', str(data_close.strftime("%Y")))
-
-                # Месяцы на разных языках
-                if contract.ContractDate:
-                    try:
-                        month_ru = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
-                                                                               "ru")
-                        month_kz = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
-                                                                               "kk")
-                        month_en = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
-                                                                               "en")
-                        text = text.replace('{ContractMonthRUS}', month_ru)
-                        text = text.replace('{ContractMonthKAZ}', month_kz)
-                        text = text.replace('{ContractMonthENG}', month_en)
-                    except:
-                        text = text.replace('{ContractMonthRUS}', contract.ContractDate.strftime("%B"))
-                        text = text.replace('{ContractMonthKAZ}', contract.ContractDate.strftime("%B"))
-                        text = text.replace('{ContractMonthENG}', contract.ContractDate.strftime("%B"))
-
-                # Учебный год
-                if contract.EduYearID:
-                    text = text.replace('{EduYear}', str(contract.EduYearID.sEduYear))
-
-                # Данные студента и родителя
-                text = text.replace('{ParentFullName}', str(parent.full_name) if parent.full_name else '')
-                text = text.replace('{StudentFullName}', str(student.full_name) if student.full_name else '')
-                text = text.replace('{StudentIIN}', str(student.iin) if student.iin else '')
-                text = text.replace('{StudentAddress}', str(parent.address) if parent.address else '')
-                text = text.replace('{StudentPhoneNumber}', str(student.phone) if student.phone else '-')
-                text = text.replace('{ParentAddress}', str(parent.address) if parent.address else '')
-                text = text.replace('{ParentPhoneNumber}', str(parent.phone) if parent.phone else '')
-                text = text.replace('{ParentIIN}', str(parent.iin) if parent.iin else '')
-
-                # Данные паспорта
-                text = text.replace('{ParentPassport}', ParentPassport)
-                text = text.replace('{ParentPassportKAZ}', ParentPassportKAZ)
-                text = text.replace('{ParentPassportENG}', ParentPassportENG)
-
-                # Суммы контракта
-                text = text.replace('{ContractAmount}',
-                                    str(int(contract.ContractAmount)) if contract.ContractAmount else '0')
-                text = text.replace('{ContractSum}', str(int(contract.ContractSum)) if contract.ContractSum else '0')
-                text = text.replace('{ContractAmountWithDiscount}', str(int(contract_amount_with_discount)))
-
-                # Суммы прописью
-                try:
-                    text = text.replace('{ContractAmountWords}', num2words(int(contract.ContractAmount),
-                                                                           lang="ru") if contract.ContractAmount else '')
-                    text = text.replace('{ContractAmountWordsKaz}', num2words(int(contract.ContractAmount),
-                                                                              lang="kz") if contract.ContractAmount else '')
-                    text = text.replace('{ContractAmountWordsEng}', num2words(int(contract.ContractAmount),
-                                                                              lang="en") if contract.ContractAmount else '')
-                    text = text.replace('{ContractSumWords}',
-                                        num2words(int(contract.ContractSum), lang="ru") if contract.ContractSum else '')
-                    text = text.replace('{ContractSumWordsKaz}',
-                                        num2words(int(contract.ContractSum), lang="kz") if contract.ContractSum else '')
-                    text = text.replace('{ContractSumWordsEng}',
-                                        num2words(int(contract.ContractSum), lang="en") if contract.ContractSum else '')
-                    text = text.replace('{ContractAmountWithDiscountWords}',
-                                        num2words(int(contract_amount_with_discount), lang="ru"))
-                    text = text.replace('{ContractAmountWithDiscountWordsKaz}',
-                                        num2words(int(contract_amount_with_discount), lang="kz"))
-                    text = text.replace('{ContractAmountWithDiscountWordsEng}',
-                                        num2words(int(contract_amount_with_discount), lang="en"))
-                except:
-                    pass
-
-                # Дополнительные суммы
-                text = text.replace('{ContractDopAmount}', str(int(contract_dop_amount)))
-                try:
-                    text = text.replace('{ContractDopAmountWords}', num2words(int(contract_dop_amount), lang="ru"))
-                    text = text.replace('{ContractDopAmountWordsKaz}', num2words(int(contract_dop_amount), lang="kz"))
-                except:
-                    pass
-
-                # Взнос
-                if contract.ContSum:
-                    text = text.replace('{ContractContr}', str(int(contract.ContSum)))
-                    try:
-                        text = text.replace('{ContractContrWords}', num2words(int(contract.ContSum), lang="ru"))
-                        text = text.replace('{ContractContrWordsKaz}', num2words(int(contract.ContSum), lang="kz"))
-                        text = text.replace('{ContractContrWordsEng}', num2words(int(contract.ContSum), lang="en"))
-                    except:
-                        pass
-                else:
-                    text = text.replace('{ContractContr}', '0')
-                    text = text.replace('{ContractContrWords}', 'ноль')
-                    text = text.replace('{ContractContrWordsKaz}', 'нөл')
-                    text = text.replace('{ContractContrWordsEng}', 'zero')
-
-                # Тексты для QR-кодов и правовые тексты
-                text = text.replace('{QRCodeTextRus}',
-                                    'QR-код содержит данные об электронно-цифровой подписи подписанта')
-                text = text.replace('{QRCodeTextKaz}',
-                                    'QR-кодта қол қоюшының электрондық-цифрлық қолтаңбасы туралы деректер қамтылады')
-                text = text.replace('{police_kaz}',
-                                    'Осы құжат «Электрондық құжат және электрондық цифрлық қолтаңба туралы» Қазақстан Республикасының 2003 жылғы 7 қаңтардағы N 370-II Заңы 7 бабының 1 тармағына сәйкес қағаз тасығыштағы құжатпен бірдей.')
-                text = text.replace('{police_rus}',
-                                    'Данный документ согласно пункту 1 статьи 7 ЗРК от 7 января 2003 года «Об электронном документе и электронной цифровой подписи» равнозначен документу на бумажном носителе.')
-
-            except Exception as e:
-                logger.error(f"Error in replace_variables_in_text: {e}")
-
-            return text
-
-        # Заменяем переменные и QR-коды в параграфах
+        # Заменяем переменные в обычных параграфах (как в change_docx_document)
         for paragraph in doc.paragraphs:
             for run in paragraph.runs:
-                # Сначала заменяем текстовые переменные
-                original_text = run.text
-                if any(var in original_text for var in
-                       ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}',
-                        '{ContractDay}', '{ContractMonthRUS}', '{ContractMonthKAZ}', '{ContractMonthENG}',
-                        '{police_kaz}', '{police_rus}', '{QRCodeTextRus}', '{QRCodeTextKaz}',
-                        '{EduYear}', '{StudentIIN}', '{ParentIIN}', '{ParentPassport}', '{ParentPassportKAZ}',
-                        '{ParentPassportENG}', '{ContractSum}', '{ContractContr}', '{ContractAmountWords}',
-                        '{ContractSumWords}', '{ContractContrWords}', '{ContractAmountWithDiscount}',
-                        '{ContractDopAmount}', '{StudentAddress}', '{ParentAddress}', '{StudentPhoneNumber}',
-                        '{ParentPhoneNumber}']):
-                    run.text = replace_variables_in_text(original_text)
+                self._replace_text_variables(run, contract, student, parent, ParentPassport,
+                                             ParentPassportKAZ, ParentPassportENG, contract_amount_with_discount,
+                                             contract_dop_amount)
+                self._replace_qr_codes(run, qr_signature, qr_director_omarov, qr_director_serikov, contract)
 
-                # Затем обрабатываем QR-коды
-                if '{QRCode}' in run.text or '{QRCodeSignature}' in run.text:
-                    run.text = run.text.replace('{QRCode}', '').replace('{QRCodeSignature}', '')
-                    if qr_signature:
-                        image_stream = BytesIO(qr_signature)
-                        run.add_picture(image_stream, width=Inches(1.5), height=Inches(1.5))
-
-                if '{QRCodeDirectorOmarov}' in run.text or '{QRcodeDirector}' in run.text:
-                    run.text = run.text.replace('{QRCodeDirectorOmarov}', '').replace('{QRcodeDirector}', '')
-                    if qr_director_omarov:
-                        image_stream = BytesIO(qr_director_omarov)
-                        run.add_picture(image_stream, width=Inches(1.2), height=Inches(1.2))
-
-                if '{QRCodeDirectorSerikov}' in run.text or '{QRCodeDirector2}' in run.text:
-                    run.text = run.text.replace('{QRCodeDirectorSerikov}', '').replace('{QRCodeDirector2}', '')
-                    if qr_director_serikov:
-                        image_stream = BytesIO(qr_director_serikov)
-                        run.add_picture(image_stream, width=Inches(1.2), height=Inches(1.2))
-
-                # Специальные QR-коды
-                if 'QRCodeDataSigned' in run.text:
-                    # Генерируем QR-код с подписанными данными
-                    qr_code_data_signed = self._generate_signed_data_qr_code(contract.ContractNum)
-                    if qr_code_data_signed:
-                        qr_code_image = BytesIO(qr_code_data_signed)
-                        run.add_picture(qr_code_image, width=Inches(1.3), height=Inches(1.3))
-
-        # Также обрабатываем таблицы
+        # Заменяем переменные в таблицах (как в change_docx_document)
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
-                            # Заменяем текстовые переменные в таблицах
-                            original_text = run.text
-                            if any(var in original_text for var in
-                                   ['{ContractNum}', '{StudentFullName}', '{ParentFullName}', '{ContractAmount}',
-                                    '{ContractDay}', '{ContractMonthRUS}', '{ContractMonthKAZ}', '{ContractMonthENG}',
-                                    '{police_kaz}', '{police_rus}', '{QRCodeTextRus}', '{QRCodeTextKaz}',
-                                    '{EduYear}', '{StudentIIN}', '{ParentIIN}', '{ParentPassport}',
-                                    '{ParentPassportKAZ}',
-                                    '{ParentPassportENG}', '{ContractSum}', '{ContractContr}', '{ContractAmountWords}',
-                                    '{ContractSumWords}', '{ContractContrWords}', '{ContractAmountWithDiscount}',
-                                    '{ContractDopAmount}', '{StudentAddress}', '{ParentAddress}',
-                                    '{StudentPhoneNumber}',
-                                    '{ParentPhoneNumber}']):
-                                run.text = replace_variables_in_text(original_text)
+                            self._replace_text_variables(run, contract, student, parent, ParentPassport,
+                                                         ParentPassportKAZ, ParentPassportENG,
+                                                         contract_amount_with_discount,
+                                                         contract_dop_amount)
+                            self._replace_qr_codes(run, qr_signature, qr_director_omarov, qr_director_serikov, contract)
 
-                            # QR-коды в таблицах
-                            if '{QRCode}' in run.text or '{QRCodeSignature}' in run.text:
-                                run.text = run.text.replace('{QRCode}', '').replace('{QRCodeSignature}', '')
-                                if qr_signature:
-                                    image_stream = BytesIO(qr_signature)
-                                    run.add_picture(image_stream, width=Inches(1.5), height=Inches(1.5))
-
-                            # Обработка таблиц оплаты
+                            # Обработка специальных таблиц
                             if '{customtable_monthpay}' in run.text:
                                 self._process_month_pay_table(cell, contract)
                                 run.text = run.text.replace('{customtable_monthpay}', '')
@@ -865,6 +693,222 @@ class ContractSignatureService:
                             if '{customtable_quarterpay}' in run.text:
                                 self._process_quarter_pay_table(cell, contract)
                                 run.text = run.text.replace('{customtable_quarterpay}', '')
+
+    def _replace_text_variables(self, run, contract, student, parent, ParentPassport, ParentPassportKAZ,
+                                ParentPassportENG, contract_amount_with_discount, contract_dop_amount):
+        """Заменяет все текстовые переменные в run (точно как в change_docx_document)"""
+        from .services import ChangeDocumentContentService
+        from datetime import timedelta
+        from num2words import num2words
+
+        try:
+            # Основные данные контракта
+            if '{ContractNum}' in run.text:
+                run.text = run.text.replace('{ContractNum}', str(contract.ContractNum) if contract.ContractNum else '')
+            if '{ContractYear}' in run.text:
+                run.text = run.text.replace('{ContractYear}',
+                                            str(contract.ContractDate.strftime("%Y")) if contract.ContractDate else '')
+            if '{ContractYearFinish}' in run.text and contract.ContractDate:
+                data_close = contract.ContractDate + timedelta(days=365)
+                run.text = run.text.replace('{ContractYearFinish}', str(data_close.strftime("%Y")))
+            if '{ContractDate}' in run.text:
+                run.text = run.text.replace('{ContractDate}', str(contract.ContractDate.strftime(
+                    "%d.%m.%Y")) if contract.ContractDate else '')
+            if '{ContractDay}' in run.text:
+                run.text = run.text.replace('{ContractDay}',
+                                            str(contract.ContractDate.strftime("%d")) if contract.ContractDate else '')
+
+            # Месяцы на разных языках
+            if contract.ContractDate:
+                if '{ContractMonthRUS}' in run.text:
+                    try:
+                        month_ru = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
+                                                                               "ru")
+                        run.text = run.text.replace('{ContractMonthRUS}', month_ru)
+                    except:
+                        run.text = run.text.replace('{ContractMonthRUS}', contract.ContractDate.strftime("%B"))
+                if '{ContractMonthKAZ}' in run.text:
+                    try:
+                        month_kz = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
+                                                                               "kk")
+                        run.text = run.text.replace('{ContractMonthKAZ}', month_kz)
+                    except:
+                        run.text = run.text.replace('{ContractMonthKAZ}', contract.ContractDate.strftime("%B"))
+                if '{ContractMonthENG}' in run.text:
+                    try:
+                        month_en = ChangeDocumentContentService.translate_text(contract.ContractDate.strftime("%B"),
+                                                                               "en")
+                        run.text = run.text.replace('{ContractMonthENG}', month_en)
+                    except:
+                        run.text = run.text.replace('{ContractMonthENG}', contract.ContractDate.strftime("%B"))
+
+            # Учебный год
+            if '{EduYear}' in run.text and contract.EduYearID:
+                run.text = run.text.replace('{EduYear}', str(contract.EduYearID.sEduYear))
+
+            # Данные студента и родителя
+            if '{ParentFullName}' in run.text:
+                run.text = run.text.replace('{ParentFullName}', str(parent.full_name) if parent.full_name else '')
+            if '{StudentFullName}' in run.text:
+                run.text = run.text.replace('{StudentFullName}', str(student.full_name) if student.full_name else '')
+            if '{StudentIIN}' in run.text:
+                run.text = run.text.replace('{StudentIIN}', str(student.iin) if student.iin else '')
+            if '{StudentAddress}' in run.text:
+                run.text = run.text.replace('{StudentAddress}', str(parent.address) if parent.address else '')
+            if '{StudentPhoneNumber}' in run.text:
+                phone_text = str(student.phone) if student.phone else '-'
+                run.text = run.text.replace('{StudentPhoneNumber}', phone_text)
+            if '{ParentAddress}' in run.text:
+                run.text = run.text.replace('{ParentAddress}', str(parent.address) if parent.address else '')
+            if '{ParentPhoneNumber}' in run.text:
+                run.text = run.text.replace('{ParentPhoneNumber}', str(parent.phone) if parent.phone else '')
+            if '{ParentIIN}' in run.text:
+                run.text = run.text.replace('{ParentIIN}', str(parent.iin) if parent.iin else '')
+
+            # Данные паспорта
+            if '{ParentPassport}' in run.text:
+                run.text = run.text.replace('{ParentPassport}', ParentPassport)
+            if '{ParentPassportKAZ}' in run.text:
+                run.text = run.text.replace('{ParentPassportKAZ}', ParentPassportKAZ)
+            if '{ParentPassportENG}' in run.text:
+                run.text = run.text.replace('{ParentPassportENG}', ParentPassportENG)
+
+            # Суммы контракта
+            if '{ContractAmount}' in run.text:
+                run.text = run.text.replace('{ContractAmount}',
+                                            str(int(contract.ContractAmount)) if contract.ContractAmount else '0')
+            if '{ContractSum}' in run.text:
+                run.text = run.text.replace('{ContractSum}',
+                                            str(int(contract.ContractSum)) if contract.ContractSum else '0')
+            if '{ContractAmountWithDiscount}' in run.text:
+                run.text = run.text.replace('{ContractAmountWithDiscount}', str(int(contract_amount_with_discount)))
+
+            # Дополнительные суммы
+            if '{ContractDopAmount}' in run.text:
+                run.text = run.text.replace('{ContractDopAmount}', str(int(contract_dop_amount)))
+
+            # Взнос
+            if '{ContractContr}' in run.text:
+                contr_sum = int(contract.ContSum) if contract.ContSum else 0
+                run.text = run.text.replace('{ContractContr}', str(contr_sum))
+
+            # Суммы прописью
+            try:
+                if '{ContractAmountWords}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWords}',
+                                                num2words(int(contract.ContractAmount),
+                                                          lang="ru") if contract.ContractAmount else '')
+                if '{ContractAmountWordsKaz}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWordsKaz}',
+                                                num2words(int(contract.ContractAmount),
+                                                          lang="kz") if contract.ContractAmount else '')
+                if '{ContractAmountWordsEng}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWordsEng}',
+                                                num2words(int(contract.ContractAmount),
+                                                          lang="en") if contract.ContractAmount else '')
+                if '{ContractSumWords}' in run.text:
+                    run.text = run.text.replace('{ContractSumWords}',
+                                                num2words(int(contract.ContractSum),
+                                                          lang="ru") if contract.ContractSum else '')
+                if '{ContractSumWordsKaz}' in run.text:
+                    run.text = run.text.replace('{ContractSumWordsKaz}',
+                                                num2words(int(contract.ContractSum),
+                                                          lang="kz") if contract.ContractSum else '')
+                if '{ContractSumWordsEng}' in run.text:
+                    run.text = run.text.replace('{ContractSumWordsEng}',
+                                                num2words(int(contract.ContractSum),
+                                                          lang="en") if contract.ContractSum else '')
+                if '{ContractAmountWithDiscountWords}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWithDiscountWords}',
+                                                num2words(int(contract_amount_with_discount), lang="ru"))
+                if '{ContractAmountWithDiscountWordsKaz}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWithDiscountWordsKaz}',
+                                                num2words(int(contract_amount_with_discount), lang="kz"))
+                if '{ContractAmountWithDiscountWordsEng}' in run.text:
+                    run.text = run.text.replace('{ContractAmountWithDiscountWordsEng}',
+                                                num2words(int(contract_amount_with_discount), lang="en"))
+                if '{ContractDopAmountWords}' in run.text:
+                    run.text = run.text.replace('{ContractDopAmountWords}',
+                                                num2words(int(contract_dop_amount), lang="ru"))
+                if '{ContractDopAmountWordsKaz}' in run.text:
+                    run.text = run.text.replace('{ContractDopAmountWordsKaz}',
+                                                num2words(int(contract_dop_amount), lang="kz"))
+                if '{ContractContrWords}' in run.text:
+                    contr_sum = int(contract.ContSum) if contract.ContSum else 0
+                    if contr_sum > 0:
+                        run.text = run.text.replace('{ContractContrWords}', num2words(contr_sum, lang="ru"))
+                    else:
+                        run.text = run.text.replace('{ContractContrWords}', 'ноль')
+                if '{ContractContrWordsKaz}' in run.text:
+                    contr_sum = int(contract.ContSum) if contract.ContSum else 0
+                    if contr_sum > 0:
+                        run.text = run.text.replace('{ContractContrWordsKaz}', num2words(contr_sum, lang="kz"))
+                    else:
+                        run.text = run.text.replace('{ContractContrWordsKaz}', 'нөл')
+                if '{ContractContrWordsEng}' in run.text:
+                    contr_sum = int(contract.ContSum) if contract.ContSum else 0
+                    if contr_sum > 0:
+                        run.text = run.text.replace('{ContractContrWordsEng}', num2words(contr_sum, lang="en"))
+                    else:
+                        run.text = run.text.replace('{ContractContrWordsEng}', 'zero')
+            except:
+                pass  # Игнорируем ошибки при преобразовании в слова
+
+            # Тексты для QR-кодов и правовые тексты
+            if '{QRCodeTextRus}' in run.text:
+                run.text = run.text.replace('{QRCodeTextRus}',
+                                            'QR-код содержит данные об электронно-цифровой подписи подписанта')
+            if '{QRCodeTextKaz}' in run.text:
+                run.text = run.text.replace('{QRCodeTextKaz}',
+                                            'QR-кодта қол қоюшының электрондық-цифрлық қолтаңбасы туралы деректер қамтылады')
+            if '{police_kaz}' in run.text:
+                run.text = run.text.replace('{police_kaz}',
+                                            'Осы құжат «Электрондық құжат және электрондық цифрлық қолтаңба туралы» Қазақстан Республикасының 2003 жылғы 7 қаңтардағы N 370-II Заңы 7 бабының 1 тармағына сәйкес қағаз тасығыштағы құжатпен бірдей.')
+            if '{police_rus}' in run.text:
+                run.text = run.text.replace('{police_rus}',
+                                            'Данный документ согласно пункту 1 статьи 7 ЗРК от 7 января 2003 года «Об электронном документе и электронной цифровой подписи» равнозначен документу на бумажном носителе.')
+
+        except Exception as e:
+            logger.error(f"Error replacing text variables: {e}")
+
+    def _replace_qr_codes(self, run, qr_signature, qr_director_omarov, qr_director_serikov, contract):
+        """Заменяет QR-коды в run"""
+        from io import BytesIO
+        from docx.shared import Inches
+
+        try:
+            # Основные QR-коды подписи
+            if '{QRCode}' in run.text or '{QRCodeSignature}' in run.text:
+                run.text = run.text.replace('{QRCode}', '').replace('{QRCodeSignature}', '')
+                if qr_signature:
+                    image_stream = BytesIO(qr_signature)
+                    run.add_picture(image_stream, width=Inches(1.5), height=Inches(1.5))
+
+            # QR-код директора Омарова
+            if '{QRCodeDirectorOmarov}' in run.text or '{QRcodeDirector}' in run.text:
+                run.text = run.text.replace('{QRCodeDirectorOmarov}', '').replace('{QRcodeDirector}', '')
+                if qr_director_omarov:
+                    image_stream = BytesIO(qr_director_omarov)
+                    run.add_picture(image_stream, width=Inches(1.5), height=Inches(1.5))
+
+            # QR-код директора Серикова
+            if '{QRCodeDirectorSerikov}' in run.text or '{QRCodeDirector2}' in run.text:
+                run.text = run.text.replace('{QRCodeDirectorSerikov}', '').replace('{QRCodeDirector2}', '')
+                if qr_director_serikov:
+                    image_stream = BytesIO(qr_director_serikov)
+                    run.add_picture(image_stream, width=Inches(1.5), height=Inches(1.5))
+
+            # Специальные QR-коды
+            if 'QRCodeDataSigned' in run.text:
+                # Генерируем QR-код с подписанными данными
+                qr_code_data_signed = self._generate_signed_data_qr_code(contract.ContractNum)
+                if qr_code_data_signed:
+                    qr_code_image = BytesIO(qr_code_data_signed)
+                    run.add_picture(qr_code_image, width=Inches(1.3), height=Inches(1.3))
+                    run.text = run.text.replace('QRCodeDataSigned', '')
+
+        except Exception as e:
+            logger.error(f"Error replacing QR codes: {e}")
 
     def _process_month_pay_table(self, cell, contract):
         """Обрабатывает таблицу помесячной оплаты"""
@@ -1085,16 +1129,53 @@ class ContractSignatureService:
 
         return hashlib.sha256(contract_data.encode()).hexdigest()
 
-    def _add_director_signature(self, contract_num: str, parent_signature: ContractSignature, document_hash: str):
+    def _add_director_signature(self, contract_num: str, parent_signature: ContractSignature, document_hash: str, signed_data):
         """Добавляет автоматическую подпись директора с правильным хэшем"""
         try:
             # Данные директора Омарова (заглушка - позже заполните реальными данными)
             director_omarov_data = {
+                "iin": "540217301387",
+                "full_name": "ОМАРОВ",
+                "position": "Директор",
+                "certificate_info": {
+                    "valid": true,
+                    "issuer": {
+                        "dn": "C=KZ, CN=ҰЛТТЫҚ КУӘЛАНДЫРУШЫ ОРТАЛЫҚ (GOST) 2022",
+                        "country": "KZ",
+                        "commonName": "ҰЛТТЫҚ КУӘЛАНДЫРУШЫ ОРТАЛЫҚ (GOST) 2022"
+                    },
+                    "signAlg": "ECGOST3410-2015-512",
+                    "subject": {
+                        "dn": "GIVENNAME=СЫДЫКОВИЧ, OU=BIN070740004047, O=\"Товарищество с ограниченной ответственностью \\\"TAMOS EDUCATION\\\" (ТАМОС ЭДЬЮКЕЙШН)\", C=KZ, SERIALNUMBER=IIN540217301387, SURNAME=ОМАРОВ, CN=ОМАРОВ МУРАТ",
+                        "bin": "070740004047",
+                        "iin": "540217301387",
+                        "country": "KZ",
+                        "surName": "ОМАРОВ",
+                        "commonName": "ОМАРОВ МУРАТ",
+                        "organization": "Товарищество с ограниченной ответственностью \"TAMOS EDUCATION\" (ТАМОС ЭДЬЮКЕЙШН)"
+                    },
+                    "keyUsage": "SIGN",
+                    "validity": {
+                        "notAfter": "2026-05-19T04:50:54.000+00:00",
+                        "notBefore": "2025-05-19T04:50:54.000+00:00"
+                    },
+                    "revocations": [
+                        {
+                            "by": "OCSP",
+                            "reason": "OK",
+                            "revoked": false,
+                            "revocationTime": null
+                        }
+                    ],
+                    "serialNumber": "59e4a35b6ac19e486926349d07eba7572059e0d8"
+                }
+            }
+            director_serikov_data = {
                 "iin": "861205300997",
                 "full_name": "СЕРИКОВ",
                 "position": "Директор",
                 "certificate_info": {
-                    "valid": True,
+                    "valid": true,
                     "issuer": {
                         "dn": "C=KZ, CN=ҰЛТТЫҚ КУӘЛАНДЫРУШЫ ОРТАЛЫҚ (GOST) 2022",
                         "country": "KZ",
@@ -1119,22 +1200,36 @@ class ContractSignatureService:
                         {
                             "by": "OCSP",
                             "reason": "OK",
-                            "revoked": False,
-                            "revocationTime": None
+                            "revoked": false,
+                            "revocationTime": null
                         }
                     ],
                     "serialNumber": "68492d0fd4cf74f7a417701044aef2663bff78a2"
                 }
             }
 
+            director_omarov_cms_signature = "-----BEGIN CMS-----\r\nMIIN2wYJKoZIhvcNAQcCoIINzDCCDcgCAQExDjAMBggqgw4DCgEDAwUAMAsGCSqG\r\nSIb3DQEHAaCCBPQwggTwMIIEWKADAgECAhRZ5KNbasGeSGkmNJ0H66dXIFng2DAO\r\nBgoqgw4DCgEBAgMCBQAwWDFJMEcGA1UEAwxA0rDQm9Ci0KLQq9KaINCa0KPTmNCb\r\n0JDQndCU0KvQoNCj0KjQqyDQntCg0KLQkNCb0KvSmiAoR09TVCkgMjAyMjELMAkG\r\nA1UEBhMCS1owHhcNMjUwNTE5MDQ1MDU0WhcNMjYwNTE5MDQ1MDU0WjCCASwxIDAe\r\nBgNVBAMMF9Ce0JzQkNCg0J7QkiDQnNCj0KDQkNCiMRUwEwYDVQQEDAzQntCc0JDQ\r\noNCe0JIxGDAWBgNVBAUTD0lJTjU0MDIxNzMwMTM4NzELMAkGA1UEBhMCS1oxgZIw\r\ngY8GA1UECgyBh9Ci0L7QstCw0YDQuNGJ0LXRgdGC0LLQviDRgSDQvtCz0YDQsNC9\r\n0LjRh9C10L3QvdC+0Lkg0L7RgtCy0LXRgtGB0YLQstC10L3QvdC+0YHRgtGM0Y4g\r\nIlRBTU9TIEVEVUNBVElPTiIgKNCi0JDQnNCe0KEg0K3QlNCs0K7QmtCV0JnQqNCd\r\nKTEYMBYGA1UECwwPQklOMDcwNzQwMDA0MDQ3MRswGQYDVQQqDBLQodCr0JTQq9Ca\r\n0J7QktCY0KcwgawwIwYJKoMOAwoBAQICMBYGCiqDDgMKAQECAgEGCCqDDgMKAQMD\r\nA4GEAASBgJlYKjvFkE6mo6bcImEtLNDzGBfNzqiWVoRIKjL7TY1aNJXMHJJQdZN5\r\nttkCLCL+z5qf2Prtg14W7exPtTVPc+bgX7AG7Y1tpONPkQas+BrJ1RNcKUWgdzPv\r\nMghLDV7w3PwLO29wi8aMaNxaPQ7/DOhoN2NV5dtkKMN2kV8QXIYfo4IB0DCCAcww\r\nDgYDVR0PAQH/BAQDAgPIMCgGA1UdJQQhMB8GCCsGAQUFBwMEBggqgw4DAwQBAgYJ\r\nKoMOAwMEAQIBMDgGA1UdIAQxMC8wLQYGKoMOAwMCMCMwIQYIKwYBBQUHAgEWFWh0\r\ndHA6Ly9wa2kuZ292Lmt6L2NwczA4BgNVHR8EMTAvMC2gK6AphidodHRwOi8vY3Js\r\nLnBraS5nb3Yua3ovbmNhX2dvc3RfMjAyMi5jcmwwOgYDVR0uBDMwMTAvoC2gK4Yp\r\naHR0cDovL2NybC5wa2kuZ292Lmt6L25jYV9kX2dvc3RfMjAyMi5jcmwwaAYIKwYB\r\nBQUHAQEEXDBaMCIGCCsGAQUFBzABhhZodHRwOi8vb2NzcC5wa2kuZ292Lmt6MDQG\r\nCCsGAQUFBzAChihodHRwOi8vcGtpLmdvdi5rei9jZXJ0L25jYV9nb3N0XzIwMjIu\r\nY2VyMB4GA1UdEQQXMBWBE3RhdHlhbmFfc2FkQG1haWwucnUwHQYDVR0OBBYEFNnk\r\no1tqwZ5IaSY0nQfrp1cgWeDYMB8GA1UdIwQYMBaAFP4wvp/IkGM/H/9aPAywyF9M\r\nbRcIMBYGBiqDDgMDBQQMMAoGCCqDDgMDBQEBMA4GCiqDDgMKAQECAwIFAAOBgQBi\r\nhf/b7tKvktNGOBoyFu2/P1c62CUMoe/2QrYg9rJc19gQCcKph94Zu/yvGohZ2VwT\r\nRkoogKSql5DgL2rwmOTrba8zloO3+aS6QMIemGU5NVSGk9+4LfYirRKIQ1FcQfbd\r\nADOXXT6K8PPOcGEbK0nZbeGWbR/Cs6Zw1BSNgGY3LTGCCKwwggioAgEBMHAwWDFJ\r\nMEcGA1UEAwxA0rDQm9Ci0KLQq9KaINCa0KPTmNCb0JDQndCU0KvQoNCj0KjQqyDQ\r\nntCg0KLQkNCb0KvSmiAoR09TVCkgMjAyMjELMAkGA1UEBhMCS1oCFFnko1tqwZ5I\r\naSY0nQfrp1cgWeDYMAwGCCqDDgMKAQMDBQCggcIwGAYJKoZIhvcNAQkDMQsGCSqG\r\nSIb3DQEHATAcBgkqhkiG9w0BCQUxDxcNMjUwOTE4MTgwNzI3WjA3BgsqhkiG9w0B\r\nCRACLzEoMCYwJDAiBCCl/pvrV/+nYoPfmz6t7B6ZFSxxv1vkvVz0UEeHHsHEdTBP\r\nBgkqhkiG9w0BCQQxQgRA5rn2Akys8YKZ1ms6fVHrG1wW1/JdtUkM3aOrrW1aeR/z\r\n3ok+XQ+qDqz3MC+cB6IZ6k32EImgAYt0fwzLsIBtJTAOBgoqgw4DCgEBAgMCBQAE\r\ngYBplIxsfNY7KMwNod4xjQzHGVIj83ZYANvgVCs81COMl+WHz83soCmgkTyFUzqp\r\nbdTZZdqAT9ekxD50PSUVN8JaH/7STifKs5GaBzZq/APaHa962PvMf19XysOdDrMW\r\nbgzp/Z1D3Q6ryEQddLWZu8bzfEi3Hh/vfifvBFnfnW7bLaGCBskwggbFBgsqhkiG\r\n9w0BCRACDjGCBrQwggawBgkqhkiG9w0BBwKgggahMIIGnQIBAzEOMAwGCCqDDgMK\r\nAQMDBQAwgaYGCyqGSIb3DQEJEAEEoIGWBIGTMIGQAgEBBggqgw4DAwIGBDBQMAwG\r\nCCqDDgMKAQMDBQAEQL7CQ6/alYAdIA6BJ1oSP1p5trtopInlm4raamuynM1a9h6j\r\nScPNiYnFc8jqUDts7oJS5DKDNd45gfZ3lFKC/pUCFE4CulX9yzQqfUgzWMCgghFW\r\nUsEHGA8yMDI1MDkxODE4MDcyN1oCCKbDCQI/evOmoIIEBDCCBAAwggNooAMCAQIC\r\nFBJ7KxdNTXWHNzZloR2fCDvbU6sjMA4GCiqDDgMKAQECAwIFADBYMUkwRwYDVQQD\r\nDEDSsNCb0KLQotCr0pog0JrQo9OY0JvQkNCd0JTQq9Cg0KPQqNCrINCe0KDQotCQ\r\n0JvQq9KaIChHT1NUKSAyMDIyMQswCQYDVQQGEwJLWjAeFw0yMjExMjYxOTAzMzVa\r\nFw0yNTExMjUxOTAzMzVaMG8xITAfBgNVBAMMGFRJTUUtU1RBTVBJTkcgQVVUSE9S\r\nSVRZCTELMAkGA1UEBhMCS1oxPTA7BgNVBAoMNNKw0JvQotCi0KvSmiDQmtCj05jQ\r\nm9CQ0J3QlNCr0KDQo9Co0Ksg0J7QoNCi0JDQm9Cr0powgawwIwYJKoMOAwoBAQIC\r\nMBYGCiqDDgMKAQECAgEGCCqDDgMKAQMDA4GEAASBgLKYaWKVHOsxLRpYzfvo091P\r\nSDR4azBDTAe7yzJFOUekA7WwfygIKWkBNEewRD20mfGZautmTx02O6yqngkc/5Bn\r\n2cnwmvSiK9sWzGwSmtyZLJ7p/9SYnsMLUJDM7yt0s0lQheH0fw61Vau0BB2bVj3r\r\n/MaYATnA+GmsOW2Rf7Yto4IBnzCCAZswFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwgw\r\nOQYDVR0gBDIwMDAuBgcqgw4DAwIGMCMwIQYIKwYBBQUHAgEWFWh0dHA6Ly9wa2ku\r\nZ292Lmt6L2NwczBoBggrBgEFBQcBAQRcMFowIgYIKwYBBQUHMAGGFmh0dHA6Ly9v\r\nY3NwLnBraS5nb3Yua3owNAYIKwYBBQUHMAKGKGh0dHA6Ly9wa2kuZ292Lmt6L2Nl\r\ncnQvbmNhX2dvc3RfMjAyMi5jZXIwOAYDVR0fBDEwLzAtoCugKYYnaHR0cDovL2Ny\r\nbC5wa2kuZ292Lmt6L25jYV9nb3N0XzIwMjIuY3JsMDoGA1UdLgQzMDEwL6AtoCuG\r\nKWh0dHA6Ly9jcmwucGtpLmdvdi5rei9uY2FfZF9nb3N0XzIwMjIuY3JsMA4GA1Ud\r\nDwEB/wQEAwIHgDAdBgNVHQ4EFgQUknsrF01NdYc3NmWhHZ8IO9tTqyMwHwYDVR0j\r\nBBgwFoAU/jC+n8iQYz8f/1o8DLDIX0xtFwgwFgYGKoMOAwMFBAwwCgYIKoMOAwMF\r\nAQEwDgYKKoMOAwoBAQIDAgUAA4GBALdwN9n5WQda3OjIEieQu8BiSjMM55JdSJt0\r\nhSgay2YM1tXirYya5OcLcf8mD4xHZ5lLETbwxH4oPdMDePLpjudyvztsIa7YRpqC\r\n3p9ySSLn42kT2BXPP/zwYAbAn/QdZUc3nd4Ab0EE6jkSqN+g1jNDpl1TM0oNUBQw\r\nCe8eKyZ5MYIB1TCCAdECAQEwcDBYMUkwRwYDVQQDDEDSsNCb0KLQotCr0pog0JrQ\r\no9OY0JvQkNCd0JTQq9Cg0KPQqNCrINCe0KDQotCQ0JvQq9KaIChHT1NUKSAyMDIy\r\nMQswCQYDVQQGEwJLWgIUEnsrF01NdYc3NmWhHZ8IO9tTqyMwDAYIKoMOAwoBAwMF\r\nAKCBuDAaBgkqhkiG9w0BCQMxDQYLKoZIhvcNAQkQAQQwHAYJKoZIhvcNAQkFMQ8X\r\nDTI1MDkxODE4MDcyN1owKwYLKoZIhvcNAQkQAgwxHDAaMBgwFgQUlCxlK2qOUecZ\r\nygxFG8OVCyJwBIAwTwYJKoZIhvcNAQkEMUIEQMJsa6UOOu+QynThSZ/1jhZYb68Y\r\nMgEmPC8mYQMm6pLuRX/2uYU1GTRnlg/9pJCNXhFAVK45lzEsroz27OydvZcwDgYK\r\nKoMOAwoBAQIDAgUABIGAsJGTthvjPtIbU/Zd7KXrx6vu5Bj0s4UGcVg5f2EEdQgf\r\nre5qmRkarn4I58LKK46NJ9S/QkJ3gSiZRWIbw8sWN/JWyX3wuhubBC8Kuz6KO+Le\r\nlaT6c8BkZr6vHivnxhtBovBpHCYx9DTKVezKDX17kWec1Yy0IsvRuSU+096jbqs=\r\n-----END CMS-----\r\n",
+            director_serikov_cms_signature = "-----BEGIN CMS-----\r\nMIIN7wYJKoZIhvcNAQcCoIIN4DCCDdwCAQExDjAMBggqgw4DCgEDAwUAMAsGCSqG\r\nSIb3DQEHAaCCBQgwggUEMIIEbKADAgECAhRoSS0P1M9096QXcBBErvJmO/94ojAO\r\nBgoqgw4DCgEBAgMCBQAwWDFJMEcGA1UEAwxA0rDQm9Ci0KLQq9KaINCa0KPTmNCb\r\n0JDQndCU0KvQoNCj0KjQqyDQntCg0KLQkNCb0KvSmiAoR09TVCkgMjAyMjELMAkG\r\nA1UEBhMCS1owHhcNMjQxMjIzMDQ1NTA2WhcNMjUxMjIzMDQ1NTA2WjCCAS8xKDAm\r\nBgNVBAMMH9Ch0JXQoNCY0JrQntCSINCR0JDQo9Cr0KDQltCQ0J0xFzAVBgNVBAQM\r\nDtCh0JXQoNCY0JrQntCSMRgwFgYDVQQFEw9JSU44NjEyMDUzMDA5OTcxCzAJBgNV\r\nBAYTAktaMYGLMIGIBgNVBAoMgYDQo9GH0YDQtdC20LTQtdC90LjQtSDQvtCx0YDQ\r\nsNC30L7QstCw0L3QuNGPICLQotCw0LzQvtGBINCt0LTRjNGO0LrQtdC50YjQvSDQ\r\npNC40LfQuNC60L4t0JzQsNGC0LXQvNCw0YLQuNGH0LXRgdC60LDRjyDQqNC60L7Q\r\nu9CwIjEYMBYGA1UECwwPQklOOTkwNDQwMDA2OTM5MRswGQYDVQQqDBLQodCV0KDQ\r\nmNCa0J7QktCY0KcwgawwIwYJKoMOAwoBAQICMBYGCiqDDgMKAQECAgEGCCqDDgMK\r\nAQMDA4GEAASBgLP3knoB6TTYN3MvOMnH2dCszqAWLLjuvYXTFRgXtUmycjdf7Ny9\r\nIsxEMkTEtvLiQabYSr8fnxNitmBj07vrPu1BHjXAhwUFbY924VTxKylPdkZiTrup\r\nqQjd7e4ekHy+4qhJPcdGBG1dm1qFBKrpX5pJ00Is5kun9tD55yuC1CYjo4IB4TCC\r\nAd0wDgYDVR0PAQH/BAQDAgPIMDIGA1UdJQQrMCkGCCqDDgMDBAMCBggrBgEFBQcD\r\nBAYIKoMOAwMEAQIGCSqDDgMDBAECATA4BgNVHSAEMTAvMC0GBiqDDgMDAjAjMCEG\r\nCCsGAQUFBwIBFhVodHRwOi8vcGtpLmdvdi5rei9jcHMwOAYDVR0fBDEwLzAtoCug\r\nKYYnaHR0cDovL2NybC5wa2kuZ292Lmt6L25jYV9nb3N0XzIwMjIuY3JsMGgGCCsG\r\nAQUFBwEBBFwwWjAiBggrBgEFBQcwAYYWaHR0cDovL29jc3AucGtpLmdvdi5rejA0\r\nBggrBgEFBQcwAoYoaHR0cDovL3BraS5nb3Yua3ovY2VydC9uY2FfZ29zdF8yMDIy\r\nLmNlcjA6BgNVHS4EMzAxMC+gLaArhilodHRwOi8vY3JsLnBraS5nb3Yua3ovbmNh\r\nX2RfZ29zdF8yMDIyLmNybDAlBgNVHREEHjAcgRpzZXJpa292YmF1eXJ6aGFuQGdt\r\nYWlsLmNvbTAdBgNVHQ4EFgQUaEktD9TPdPekF3AQRK7yZjv/eKIwHwYDVR0jBBgw\r\nFoAU/jC+n8iQYz8f/1o8DLDIX0xtFwgwFgYGKoMOAwMFBAwwCgYIKoMOAwMFAQEw\r\nDgYKKoMOAwoBAQIDAgUAA4GBAH46PTVn0ApnsXbUaLczMibB0Aeyu8uZxma4ofkQ\r\nmglgXEXom3ClnrMBf1PQBXDMcUwM0A8c1REcpKyBGUKSekYkD/BDcwz+ICDfXeV0\r\nA0Uy8Cy9qN44PYYKqlCQP9u9nYbskTk03wa8G83RoR4PVIyqSTiylstW64bC+9au\r\nlDh2MYIIrDCCCKgCAQEwcDBYMUkwRwYDVQQDDEDSsNCb0KLQotCr0pog0JrQo9OY\r\n0JvQkNCd0JTQq9Cg0KPQqNCrINCe0KDQotCQ0JvQq9KaIChHT1NUKSAyMDIyMQsw\r\nCQYDVQQGEwJLWgIUaEktD9TPdPekF3AQRK7yZjv/eKIwDAYIKoMOAwoBAwMFAKCB\r\nwjAYBgkqhkiG9w0BCQMxCwYJKoZIhvcNAQcBMBwGCSqGSIb3DQEJBTEPFw0yNTA5\r\nMTgxNzU4NThaMDcGCyqGSIb3DQEJEAIvMSgwJjAkMCIEINAxCVh3ClD6bKgn8xuU\r\nRNxL9ACAfCDqzfMQTIr4CUehME8GCSqGSIb3DQEJBDFCBEDmufYCTKzxgpnWazp9\r\nUesbXBbX8l21SQzdo6utbVp5H/PeiT5dD6oOrPcwL5wHohnqTfYQiaABi3R/DMuw\r\ngG0lMA4GCiqDDgMKAQECAwIFAASBgIPk/4BShhApK6AQ5iPRSX/JosZL1DdGzhel\r\nmt51eT3Nx87ylbvN06RKpTYDkjsDv3LXfZUReyV4mOaEDslYZHflArup/YA94vXb\r\nyGlbuyUcmNWcl+629KnZeR2APSVqhUqPDC7pXnyRuZaL2NRUi7T+xE3YJDhYCuRj\r\nq/tbuSbgoYIGyTCCBsUGCyqGSIb3DQEJEAIOMYIGtDCCBrAGCSqGSIb3DQEHAqCC\r\nBqEwggadAgEDMQ4wDAYIKoMOAwoBAwMFADCBpgYLKoZIhvcNAQkQAQSggZYEgZMw\r\ngZACAQEGCCqDDgMDAgYEMFAwDAYIKoMOAwoBAwMFAARAwiH6QOJAfq9/jPvGH+MW\r\n4+sSS1PRsCKZT9g4r8KnYMLIBr39HYWIcKGEyhYxeG9Hg8hNClmDwmA2zaA0o/ez\r\n8QIUypBNquOZnxrS0q84oLSLjbWobfMYDzIwMjUwOTE4MTc1ODU4WgIIuJhpawZu\r\nmn2gggQEMIIEADCCA2igAwIBAgIUEnsrF01NdYc3NmWhHZ8IO9tTqyMwDgYKKoMO\r\nAwoBAQIDAgUAMFgxSTBHBgNVBAMMQNKw0JvQotCi0KvSmiDQmtCj05jQm9CQ0J3Q\r\nlNCr0KDQo9Co0Ksg0J7QoNCi0JDQm9Cr0pogKEdPU1QpIDIwMjIxCzAJBgNVBAYT\r\nAktaMB4XDTIyMTEyNjE5MDMzNVoXDTI1MTEyNTE5MDMzNVowbzEhMB8GA1UEAwwY\r\nVElNRS1TVEFNUElORyBBVVRIT1JJVFkJMQswCQYDVQQGEwJLWjE9MDsGA1UECgw0\r\n0rDQm9Ci0KLQq9KaINCa0KPTmNCb0JDQndCU0KvQoNCj0KjQqyDQntCg0KLQkNCb\r\n0KvSmjCBrDAjBgkqgw4DCgEBAgIwFgYKKoMOAwoBAQICAQYIKoMOAwoBAwMDgYQA\r\nBIGAsphpYpUc6zEtGljN++jT3U9INHhrMENMB7vLMkU5R6QDtbB/KAgpaQE0R7BE\r\nPbSZ8Zlq62ZPHTY7rKqeCRz/kGfZyfCa9KIr2xbMbBKa3Jksnun/1JiewwtQkMzv\r\nK3SzSVCF4fR/DrVVq7QEHZtWPev8xpgBOcD4aaw5bZF/ti2jggGfMIIBmzAWBgNV\r\nHSUBAf8EDDAKBggrBgEFBQcDCDA5BgNVHSAEMjAwMC4GByqDDgMDAgYwIzAhBggr\r\nBgEFBQcCARYVaHR0cDovL3BraS5nb3Yua3ovY3BzMGgGCCsGAQUFBwEBBFwwWjAi\r\nBggrBgEFBQcwAYYWaHR0cDovL29jc3AucGtpLmdvdi5rejA0BggrBgEFBQcwAoYo\r\naHR0cDovL3BraS5nb3Yua3ovY2VydC9uY2FfZ29zdF8yMDIyLmNlcjA4BgNVHR8E\r\nMTAvMC2gK6AphidodHRwOi8vY3JsLnBraS5nb3Yua3ovbmNhX2dvc3RfMjAyMi5j\r\ncmwwOgYDVR0uBDMwMTAvoC2gK4YpaHR0cDovL2NybC5wa2kuZ292Lmt6L25jYV9k\r\nX2dvc3RfMjAyMi5jcmwwDgYDVR0PAQH/BAQDAgeAMB0GA1UdDgQWBBSSeysXTU11\r\nhzc2ZaEdnwg721OrIzAfBgNVHSMEGDAWgBT+ML6fyJBjPx//WjwMsMhfTG0XCDAW\r\nBgYqgw4DAwUEDDAKBggqgw4DAwUBATAOBgoqgw4DCgEBAgMCBQADgYEAt3A32flZ\r\nB1rc6MgSJ5C7wGJKMwznkl1Im3SFKBrLZgzW1eKtjJrk5wtx/yYPjEdnmUsRNvDE\r\nfig90wN48umO53K/O2whrthGmoLen3JJIufjaRPYFc8//PBgBsCf9B1lRzed3gBv\r\nQQTqORKo36DWM0OmXVMzSg1QFDAJ7x4rJnkxggHVMIIB0QIBATBwMFgxSTBHBgNV\r\nBAMMQNKw0JvQotCi0KvSmiDQmtCj05jQm9CQ0J3QlNCr0KDQo9Co0Ksg0J7QoNCi\r\n0JDQm9Cr0pogKEdPU1QpIDIwMjIxCzAJBgNVBAYTAktaAhQSeysXTU11hzc2ZaEd\r\nnwg721OrIzAMBggqgw4DCgEDAwUAoIG4MBoGCSqGSIb3DQEJAzENBgsqhkiG9w0B\r\nCRABBDAcBgkqhkiG9w0BCQUxDxcNMjUwOTE4MTc1ODU4WjArBgsqhkiG9w0BCRAC\r\nDDEcMBowGDAWBBSULGUrao5R5xnKDEUbw5ULInAEgDBPBgkqhkiG9w0BCQQxQgRA\r\nfyvnvijYw6EvVJL1aEolHVDjfgvyq7PZARtCcI1HiutvXFaEoVbv0jHGmyzdxV9k\r\nOtkHexxOs+JDB20Nje9u4zAOBgoqgw4DCgEBAgMCBQAEgYBxJcamT0aoFdH1uA5E\r\nXxC2y3hVjft+7gHBdtzqkH+lupOJqTm6fW6jo+csxcvls+loNVM35ijxR0JwrqV1\r\nP91Oz6tQx3zf9vC5jZoD5JC1w5GE23SEll4dukiKRua7HLvSAl2iOC8sBGOW8w25\r\nrcLFOunywr5XVpKxFILkO2irhA==\r\n-----END CMS-----\r\n"
+
             # Создаем подпись директора с ТЕМ ЖЕ хэшем что и у родителя
             director_signature = ContractSignature.objects.create(
                 contract_num=contract_num,
-                cms_signature="",
-                signed_data="",
-                document_hash=document_hash,  # Используем ПЕРЕДАННЫЙ хэш
+                cms_signature=director_omarov_cms_signature,
+                signed_data=signed_data,
+                document_hash=document_hash,
                 signer_iin=director_omarov_data["iin"],
                 certificate_info=director_omarov_data["certificate_info"],
+                is_valid=True,
+                created_by=None
+            )
+
+            director_signature = ContractSignature.objects.create(
+                contract_num=contract_num,
+                cms_signature=director_serikov_cms_signature,
+                signed_data=signed_data,
+                document_hash=document_hash,
+                signer_iin=director_serikov_data["iin"],
+                certificate_info=director_serikov_data["certificate_info"],
                 is_valid=True,
                 created_by=None
             )
