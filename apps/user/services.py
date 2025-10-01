@@ -248,6 +248,7 @@ class UserViewProfileService:
         user = request.user
         parent_info = UserInfo.objects.filter(user=user).first()
         user.parent_info = parent_info
+        print("USER ROLE:", request.user.role.role_name)
 
         return Response(UserSerializer(user).data)
 

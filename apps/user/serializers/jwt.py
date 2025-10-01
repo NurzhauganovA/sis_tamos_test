@@ -9,7 +9,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         login, password = attrs['login'], attrs['password']
 
         user = User.objects.filter(login=login).first()
-        print("user", user)
 
         if user is not None:
             if not user.is_active:

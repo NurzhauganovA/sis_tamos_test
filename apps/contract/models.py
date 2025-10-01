@@ -49,6 +49,7 @@ class ParentMS(models.Model):
 class StudentMS(models.Model):
     """ Модель студентов """
 
+    id = models.AutoField(primary_key=True)
     birthday = models.DateField()
     full_name = models.CharField(max_length=255)
     iin = models.CharField(max_length=12, null=True)

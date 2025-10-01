@@ -31,6 +31,7 @@ urlpatterns = [
     path(f'{api_version}contract/', include('apps.contract.urls')),
     path(f'{api_version}driver/', include('apps.driver.urls')),
     path(f'{api_version}payment/', include('apps.payment.urls')),
+    path(f'{api_version}application/', include('apps.applications.urls')),
 
     path(f'{api_version}token/logout/', auth_views.LogoutView.as_view(), name='logout'),
 ]

@@ -3,6 +3,7 @@ from datetime import timedelta
 from pathlib import Path
 import environ
 from celery.schedules import crontab
+from django.conf.global_settings import USE_X_FORWARDED_HOST, USE_X_FORWARDED_PORT
 
 env = environ.Env()
 
@@ -49,6 +50,7 @@ INSTALLED_APPS = [
     'apps.contract',
     'apps.driver',
     'apps.payment',
+    'apps.applications',
 
     'django_seed',
 ]
@@ -258,6 +260,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media_files')
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static_files')
 
+
+USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 

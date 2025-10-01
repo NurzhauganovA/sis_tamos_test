@@ -23,9 +23,10 @@ class CustomUserManager(UserManager):
     def create_superuser(self, login, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
 
-        extra_fields.setdefault('school', None)
         extra_fields.setdefault('role', None)
+        extra_fields.setdefault('is_work', True)
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
@@ -73,7 +74,7 @@ class UserRoleMS(models.Model):
 
 
 class User(AbstractUser):
-    school = models.ManyToManyField(School, related_name='school_employees')
+    school = models.ManyToManyField(School, related_name='school_employees', null=True)
     role = models.ForeignKey(UserRole, null=True, on_delete=models.SET_NULL)
     login = models.CharField(
         _('login'),
@@ -99,7 +100,7 @@ class User(AbstractUser):
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'login'
-    REQUIRED_FIELDS = ['role', 'fio', 'iswork', 'password']
+    REQUIRED_FIELDS = ['fio', 'password']
 
     def __str__(self):
         return self.login
