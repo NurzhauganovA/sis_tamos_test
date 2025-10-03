@@ -31,7 +31,7 @@ class ApplicationService:
             return Application.objects.none()
 
         queryset = Application.objects.select_related(
-            'applicant', 'application_type', 'assigned_to'
+            'applicant', 'application_type', 'assigned_to', 'campus', 'subdivision1', 'subdivision2'
         ).prefetch_related('files', 'comments')
 
         # Фильтрация по роли пользователя
@@ -44,12 +44,16 @@ class ApplicationService:
         else:
             # Поставщики услуг видят заявки по своим услугам
             user_services = ServiceProvider.objects.filter(
-                responsible_person=user,
+                account=user,
                 is_active=True
             )
             if user_services.exists():
+                service_provider = user_services.first()
                 service_type_ids = user_services.values_list('application_types__id', flat=True)
                 queryset = queryset.filter(application_type_id__in=service_type_ids)
+
+                if service_provider.campus:
+                    queryset = queryset.filter(campus=service_provider.campus)
             else:
                 return Application.objects.none()
 

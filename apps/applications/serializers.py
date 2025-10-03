@@ -68,6 +68,7 @@ class AccountServiceProviderSerializer(serializers.Serializer):
 
 class AccountCreateServiceProviderSerializer(serializers.Serializer):
     responsible_full_name = serializers.CharField()
+    service_type = serializers.CharField()
     login = serializers.CharField()
     password = serializers.CharField()
     password2 = serializers.CharField()
@@ -152,8 +153,8 @@ class ApplicationListSerializer(serializers.ModelSerializer):
         model = Application
         fields = [
             'id', 'subject', 'campus', 'subdivision1', 'subdivision2', 'status',
-            'status_display', 'student_id', 'student_class_num', 'student_class_liter', 'application_type', 'applicant',
-            'assigned_to', 'created_at', 'updated_at'
+            'status_display', 'student_id', 'student_class_num', 'student_class_liter',
+            'application_type', 'applicant', 'assigned_to', 'created_at', 'updated_at'
         ]
 
 
@@ -203,7 +204,6 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         """Проверяем, что студент принадлежит текущему пользователю"""
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
-            # Получаем login пользователя без +7
             login_format = str(request.user.login).split('+7')[1] if request.user.login.startswith(
                 '+7') else request.user.login
 
@@ -215,7 +215,6 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
                         "Родительская учетная запись не найдена."
                     )
 
-                # Проверяем, что студент принадлежит этому родителю
                 student_exists = StudentMS.objects.using('ms_sql').filter(
                     id=value,
                     parent_id=parent_ms.id
@@ -235,12 +234,10 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         uploaded_files = validated_data.pop('uploaded_files', [])
         request = self.context.get('request')
 
-        # Устанавливаем заявителя
         validated_data['applicant'] = request.user
 
         application = super().create(validated_data)
 
-        # Сохраняем файлы
         for file in uploaded_files:
             ApplicationFile.objects.create(
                 application=application,
@@ -253,8 +250,6 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
 
 
 class ApplicationUpdateSerializer(serializers.ModelSerializer):
-    """Сериализатор для обновления заявки"""
-
     class Meta:
         model = Application
         fields = ['campus', 'subdivision1', 'subdivision2', 'subject', 'description']

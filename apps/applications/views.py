@@ -4,8 +4,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
-from django.shortcuts import get_object_or_404
-from rest_framework.views import APIView
 
 from .models import Application, ApplicationType, ServiceProvider
 from .serializers import (
@@ -36,7 +34,7 @@ from .services import (
 )
 from apps.student.models import Student
 from ..contract.models import StudentMS
-from ..user.models import ParentMS, User, UserRole
+from ..user.models import ParentMS, User, UserRole, UserInfo
 
 
 class ApplicationPagination(PageNumberPagination):
@@ -258,20 +256,32 @@ class AccountApplicationServiceProvider(viewsets.ModelViewSet):
         if data['password'] != data['password2']:
             return Response({'error': 'Пароли не совпадают'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user_role = UserRole.objects.filter(role_name="Поставщик").first()
+        if 'service_type' not in data or not data['service_type']:
+            return Response(
+                {"error": "Тип услуги (service_type) обязателен"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        service_type = request.data.get("service_type")
+        user_role = UserRole.objects.filter(role_name=service_type)
         if not user_role:
-            UserRole.objects.create(role_name="Поставщик")
+            user_role = UserRole.objects.create(role_name=service_type)
 
         provider = User.objects.create_user(
             login=data['login'],
             password=data['password'],
             is_active=True,
             fio=data['responsible_full_name'],
-            role=UserRole.objects.get(role_name="Поставщик"),
+            role=user_role,
             is_work=False
         )
         provider.set_password(data['password'])
         provider.save()
+
+        user_info = UserInfo.objects.create(
+            user=provider
+        )
+        user_info.save()
 
         serializer = AccountServiceProviderSerializer(provider)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

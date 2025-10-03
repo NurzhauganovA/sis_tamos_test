@@ -125,6 +125,7 @@ class UserInfo(models.Model):
     work_position = models.CharField(max_length=100, null=True, blank=True)
     is_teacher = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
+    level = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.user.fio

@@ -1,10 +1,10 @@
-from django.urls import path
 from rest_framework.routers import DefaultRouter
 from .views import (
     ApplicationViewSet,
     ApplicationTypeViewSet,
     ServiceProviderViewSet,
-    StudentApplicationViewSet, AccountApplicationServiceProvider
+    StudentApplicationViewSet,
+    AccountApplicationServiceProvider
 )
 
 router = DefaultRouter()

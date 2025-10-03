@@ -11,8 +11,9 @@ from .models import (
 
 @admin.register(ServiceProvider)
 class ServiceProviderAdmin(admin.ModelAdmin):
-    list_display = ['name', 'bin_or_iin', 'service_type', 'responsible_full_name', 'responsible_phone', 'responsible_email', 'campus', 'subdivision1', 'subdivision2', 'is_active', 'created_at']
-    list_filter = ['service_type', 'is_active', 'created_at']
+    list_display = ['name', 'bin_or_iin', 'service_type', 'responsible_full_name', 'responsible_phone',
+                    'responsible_email', 'campus', 'subdivision1', 'subdivision2', 'is_active', 'created_at']
+    list_filter = ['service_type', 'is_active', 'campus', 'created_at']
     search_fields = ['name', 'bin_or_iin', 'service_type']
     ordering = ['-created_at']
 
@@ -48,7 +49,7 @@ class ApplicationAdmin(admin.ModelAdmin):
         'id', 'subject', 'campus', 'subdivision1', 'subdivision2', 'applicant', 'student_id',
         'student_class_num', 'student_class_liter', 'application_type', 'status', 'created_at'
     ]
-    list_filter = ['status', 'application_type', 'created_at']
+    list_filter = ['status', 'application_type', 'campus', 'created_at']
     search_fields = ['subject', 'description', 'applicant__fio']
     ordering = ['-created_at']
     readonly_fields = ['created_at', 'updated_at', 'processed_at', 'completed_at']
@@ -57,7 +58,8 @@ class ApplicationAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Основная информация', {
-            'fields': ('applicant', 'campus', 'subdivision1', 'subdivision2', 'student_id', 'student_class_num', 'student_class_liter', 'application_type', 'subject', 'description')
+            'fields': ('applicant', 'campus', 'subdivision1', 'subdivision2', 'student_id', 'student_class_num',
+                       'student_class_liter', 'application_type', 'subject', 'description')
         }),
         ('Статус и обработка', {
             'fields': ('status', 'assigned_to', 'rejection_reason')

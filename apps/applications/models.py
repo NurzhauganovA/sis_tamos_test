@@ -2,9 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from apps.contract.models import StudentMS
 from apps.user.models import User
-from apps.student.models import Student
 
 
 class ServiceProvider(models.Model):
