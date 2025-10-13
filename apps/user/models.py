@@ -126,6 +126,7 @@ class UserInfo(models.Model):
     is_teacher = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     level = models.IntegerField(null=True, blank=True)
+    service_provider_id = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.user.fio

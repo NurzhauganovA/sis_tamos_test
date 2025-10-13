@@ -4,7 +4,7 @@ from .views import (
     ApplicationTypeViewSet,
     ServiceProviderViewSet,
     StudentApplicationViewSet,
-    AccountApplicationServiceProvider
+    AccountApplicationServiceProvider, SchoolDataViewSet
 )
 
 router = DefaultRouter()
@@ -13,5 +13,6 @@ router.register('application-types', ApplicationTypeViewSet, basename='applicati
 router.register('service-providers', ServiceProviderViewSet, basename='service-providers')
 router.register('my-students', StudentApplicationViewSet, basename='my-students')
 router.register('account', AccountApplicationServiceProvider, basename='account')
+router.register('school-data', SchoolDataViewSet, basename='school-data')
 
 urlpatterns = router.urls

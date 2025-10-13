@@ -15,7 +15,8 @@ from .serializers import (
     ServiceProviderSerializer,
     StudentSimpleSerializer, ApplicationTypeCreateSerializer, ApplicationTypeUpdateSerializer,
     ServiceProviderCreateSerializer, ServiceProviderUpdateSerializer, AccountCreateServiceProviderSerializer,
-    AccountServiceProviderSerializer, ApplicationCampusSerializer
+    AccountServiceProviderSerializer, ApplicationCampusSerializer, CampusListSerializer, Subdivision1ListSerializer,
+    Subdivision2ListSerializer
 )
 from .permissions import (
     ApplicationPermission,
@@ -34,6 +35,7 @@ from .services import (
 )
 from apps.student.models import Student
 from ..contract.models import StudentMS
+from ..school.models import SchoolMS
 from ..user.models import ParentMS, User, UserRole, UserInfo
 
 
@@ -243,10 +245,15 @@ class AccountApplicationServiceProvider(viewsets.ModelViewSet):
 
     serializer_class = AccountCreateServiceProviderSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-    http_method_names = ['post']
+    http_method_names = ['get', 'post']
+
+    def get_serializer_class(self):
+        if self.action == 'list' or self.action == 'retrieve':
+            return AccountServiceProviderSerializer
+        return AccountCreateServiceProviderSerializer
 
     def create(self, request, *args, **kwargs):
-        """Получить поставщика услуг по аккаунту"""
+        """Создать поставщика услуг по аккаунту"""
         data = request.data
 
         if User.objects.filter(login=data['login']).exists():
@@ -279,10 +286,88 @@ class AccountApplicationServiceProvider(viewsets.ModelViewSet):
         provider.save()
 
         user_info = UserInfo.objects.create(
-            user=provider
+            user=provider,
+            service_provider_id=request.data.get("service_provider_id")
         )
         user_info.save()
 
         serializer = AccountServiceProviderSerializer(provider)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+
+class SchoolDataViewSet(viewsets.ViewSet):
+    """ViewSet для получения данных о школах из MS SQL"""
+
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='campuses')
+    def get_campuses(self, request):
+        """
+        Получить список уникальных кампусов (sSchool_name)
+        GET /api/v1/school/data/campuses/
+        """
+        campuses = SchoolMS.objects.using('ms_sql').values_list(
+            'sSchool_name', flat=True
+        ).distinct().order_by('sSchool_name')
+
+        # Убираем пустые значения и преобразуем в список
+        unique_campuses = [campus for campus in campuses if campus]
+
+        serializer = CampusListSerializer({'campuses': unique_campuses})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='subdivisions1')
+    def get_subdivisions1(self, request):
+        """
+        Получить список уникальных subdivision1 (sSchool_direct) для выбранного campus
+        GET /api/v1/school/data/subdivisions1/?campus=<campus_name>
+        """
+        campus = request.query_params.get('campus')
+
+        if not campus:
+            return Response(
+                {'error': 'Параметр campus обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        subdivisions = SchoolMS.objects.using('ms_sql').filter(
+            sSchool_name=campus
+        ).values_list('sSchool_direct', flat=True).distinct().order_by('sSchool_direct')
+
+        # Убираем пустые значения и преобразуем в список
+        unique_subdivisions = [sub for sub in subdivisions if sub]
+
+        serializer = Subdivision1ListSerializer({'subdivisions': unique_subdivisions})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='subdivisions2')
+    def get_subdivisions2(self, request):
+        """
+        Получить список уникальных subdivision2 (sSchool_language) для выбранного campus и subdivision1
+        GET /api/v1/school/data/subdivisions2/?campus=<campus_name>&subdivision1=<subdivision1_name>
+        """
+        campus = request.query_params.get('campus')
+        subdivision1 = request.query_params.get('subdivision1')
+
+        if not campus:
+            return Response(
+                {'error': 'Параметр campus обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not subdivision1:
+            return Response(
+                {'error': 'Параметр subdivision1 обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        subdivisions = SchoolMS.objects.using('ms_sql').filter(
+            sSchool_name=campus,
+            sSchool_direct=subdivision1
+        ).values_list('sSchool_language', flat=True).distinct().order_by('sSchool_language')
+
+        # Убираем пустые значения и преобразуем в список
+        unique_subdivisions = [sub for sub in subdivisions if sub]
+
+        serializer = Subdivision2ListSerializer({'subdivisions': unique_subdivisions})
+        return Response(serializer.data)

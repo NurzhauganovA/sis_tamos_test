@@ -26,13 +26,28 @@ def get_student_data_by_id(student_id):
         return None
 
 
+class CampusListSerializer(serializers.Serializer):
+    """Сериализатор для списка кампусов (sSchool_name)"""
+    campuses = serializers.ListField(child=serializers.CharField())
+
+
+class Subdivision1ListSerializer(serializers.Serializer):
+    """Сериализатор для списка subdivision1 (sSchool_direct)"""
+    subdivisions = serializers.ListField(child=serializers.CharField())
+
+
+class Subdivision2ListSerializer(serializers.Serializer):
+    """Сериализатор для списка subdivision2 (sSchool_language)"""
+    subdivisions = serializers.ListField(child=serializers.CharField())
+
+
 class ServiceProviderSerializer(serializers.ModelSerializer):
     account = UserSerializer(read_only=True)
 
     class Meta:
         model = ServiceProvider
         fields = [
-            'id', 'name', 'bin_or_iin', 'service_type', 'description',
+            'id', 'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
             'campus', 'subdivision1', 'subdivision2', 'account', 'is_active'
         ]
@@ -42,7 +57,7 @@ class ServiceProviderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceProvider
         fields = [
-            'id', 'name', 'bin_or_iin', 'service_type', 'description',
+            'id', 'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
             'campus', 'subdivision1', 'subdivision2', 'account'
         ]
@@ -52,7 +67,7 @@ class ServiceProviderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceProvider
         fields = [
-            'name', 'bin_or_iin', 'service_type', 'description',
+            'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
             'campus', 'subdivision1', 'subdivision2', 'account', 'is_active'
         ]
@@ -67,6 +82,7 @@ class AccountServiceProviderSerializer(serializers.Serializer):
 
 
 class AccountCreateServiceProviderSerializer(serializers.Serializer):
+    service_provider_id = serializers.IntegerField()
     responsible_full_name = serializers.CharField()
     service_type = serializers.CharField()
     login = serializers.CharField()

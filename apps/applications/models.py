@@ -9,7 +9,7 @@ class ServiceProvider(models.Model):
     """Юридическое лицо, предоставляющее услуги"""
     name = models.CharField(max_length=200, verbose_name=_("Наименование"))
     bin_or_iin = models.CharField(max_length=20, verbose_name=_("БИН/ИИН"))
-    service_type = models.CharField(max_length=100, verbose_name=_("Тип услуги"))
+    service_type = models.CharField(max_length=100, verbose_name=_("Тип услуги"), null=True, blank=True)
     description = models.TextField(blank=True, verbose_name=_("Описание"), null=True)
 
     responsible_full_name = models.CharField(max_length=200, verbose_name=_("Ответственный за заявки"))
@@ -19,8 +19,6 @@ class ServiceProvider(models.Model):
     campus = models.CharField(max_length=100, verbose_name=_("Кампус"), null=True, blank=True)
     subdivision1 = models.CharField(max_length=100, verbose_name=_("Подразделение 1"), null=True, blank=True)
     subdivision2 = models.CharField(max_length=100, verbose_name=_("Подразделение 2"), null=True, blank=True)
-
-    account = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name=_("Аккаунт"))
 
     is_active = models.BooleanField(default=True, verbose_name=_("Активен"))
 

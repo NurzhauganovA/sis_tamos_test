@@ -31,7 +31,7 @@ class ApplicationService:
             return Application.objects.none()
 
         queryset = Application.objects.select_related(
-            'applicant', 'application_type', 'assigned_to', 'campus', 'subdivision1', 'subdivision2'
+            'applicant', 'application_type', 'assigned_to'
         ).prefetch_related('files', 'comments')
 
         # Фильтрация по роли пользователя

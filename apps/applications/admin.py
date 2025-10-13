@@ -11,10 +11,10 @@ from .models import (
 
 @admin.register(ServiceProvider)
 class ServiceProviderAdmin(admin.ModelAdmin):
-    list_display = ['name', 'bin_or_iin', 'service_type', 'responsible_full_name', 'responsible_phone',
+    list_display = ['name', 'bin_or_iin', 'responsible_full_name', 'responsible_phone',
                     'responsible_email', 'campus', 'subdivision1', 'subdivision2', 'is_active', 'created_at']
-    list_filter = ['service_type', 'is_active', 'campus', 'created_at']
-    search_fields = ['name', 'bin_or_iin', 'service_type']
+    list_filter = ['is_active', 'campus', 'created_at']
+    search_fields = ['name', 'bin_or_iin']
     ordering = ['-created_at']
 
 
