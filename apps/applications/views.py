@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Application, ApplicationType, ServiceProvider
+from .models import Application, ApplicationType, ServiceProvider, SchoolApplication
 from .serializers import (
     ApplicationListSerializer,
     ApplicationDetailSerializer,
@@ -16,7 +16,7 @@ from .serializers import (
     StudentSimpleSerializer, ApplicationTypeCreateSerializer, ApplicationTypeUpdateSerializer,
     ServiceProviderCreateSerializer, ServiceProviderUpdateSerializer, AccountCreateServiceProviderSerializer,
     AccountServiceProviderSerializer, ApplicationCampusSerializer, CampusListSerializer, Subdivision1ListSerializer,
-    Subdivision2ListSerializer
+    Subdivision2ListSerializer, AccountUpdateServiceProviderSerializer
 )
 from .permissions import (
     ApplicationPermission,
@@ -49,7 +49,7 @@ class ApplicationPagination(PageNumberPagination):
 class ApplicationViewSet(viewsets.ModelViewSet):
     """ViewSet для работы с заявками"""
 
-    permission_classes = [IsAuthenticated, ApplicationPermission]
+    permission_classes = [IsAuthenticated]
     pagination_class = ApplicationPagination
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'application_type']
@@ -103,7 +103,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def accept(self, request, pk=None):
         """Принять заявку в работу"""
@@ -114,7 +113,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def reject(self, request, pk=None):
         """Отклонить заявку"""
@@ -125,7 +123,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def complete(self, request, pk=None):
         """Завершить заявку"""
@@ -136,7 +133,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[IsAuthenticated, ApplicationCommentPermission]
     )
     def add_comment(self, request, pk=None):
         """Добавить комментарий к заявке"""
@@ -241,39 +237,158 @@ class StudentApplicationViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AccountApplicationServiceProvider(viewsets.ModelViewSet):
-    """APIView для получения поставщика услуг по аккаунту"""
+    """ViewSet для управления аккаунтами поставщиков услуг"""
 
     serializer_class = AccountCreateServiceProviderSerializer
     permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-    http_method_names = ['get', 'post']
+    http_method_names = ['get', 'post', 'delete', 'patch']
+
+    def get_queryset(self):
+        """Получить всех пользователей, связанных с service_provider"""
+        from apps.user.models import UserInfo
+        # Получаем ID пользователей, у которых есть связь с service_provider
+        user_ids = UserInfo.objects.filter(
+            service_provider_id__isnull=False
+        ).values_list('user_id', flat=True)
+
+        return User.objects.filter(id__in=user_ids)
 
     def get_serializer_class(self):
-        if self.action == 'list' or self.action == 'retrieve':
+        if self.action in ['list', 'retrieve']:
             return AccountServiceProviderSerializer
+        if self.action in ['partial_update']:
+            return AccountUpdateServiceProviderSerializer
         return AccountCreateServiceProviderSerializer
 
+    def list(self, request, *args, **kwargs):
+        """Получить список всех аккаунтов с информацией о service_provider"""
+        from apps.user.models import UserInfo
+
+        queryset = self.get_queryset()
+
+        # Формируем данные с информацией о service_provider
+        result = []
+        for user in queryset:
+            try:
+                user_info = UserInfo.objects.get(user=user)
+                service_provider = ServiceProvider.objects.get(id=user_info.service_provider_id)
+
+                data = {
+                    'id': user.id,
+                    'fio': user.fio,
+                    'login': user.login,
+                    'role': user.role.role_name if user.role else None,
+                    'is_active': user.is_active,
+                    'service_provider': {
+                        'id': service_provider.id,
+                        'name': service_provider.name,
+                        'bin_or_iin': service_provider.bin_or_iin,
+                        'service_type': service_provider.service_type,
+                        'description': service_provider.description,
+                        'responsible_full_name': service_provider.responsible_full_name,
+                        'responsible_phone': service_provider.responsible_phone,
+                        'responsible_email': service_provider.responsible_email,
+                        'campus': service_provider.campus,
+                        'subdivision1': service_provider.subdivision1,
+                        'subdivision2': service_provider.subdivision2,
+                        'is_active': service_provider.is_active
+                    }
+                }
+                result.append(data)
+            except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
+                continue
+
+        serializer = AccountServiceProviderSerializer(result, many=True)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Получить конкретный аккаунт с информацией о service_provider"""
+        from apps.user.models import UserInfo
+
+        user = self.get_object()
+
+        try:
+            user_info = UserInfo.objects.get(user=user)
+            service_provider = ServiceProvider.objects.get(id=user_info.service_provider_id)
+
+            data = {
+                'id': user.id,
+                'fio': user.fio,
+                'login': user.login,
+                'role': user.role.role_name if user.role else None,
+                'is_active': user.is_active,
+                'service_provider': {
+                    'id': service_provider.id,
+                    'name': service_provider.name,
+                    'bin_or_iin': service_provider.bin_or_iin,
+                    'service_type': service_provider.service_type,
+                    'description': service_provider.description,
+                    'responsible_full_name': service_provider.responsible_full_name,
+                    'responsible_phone': service_provider.responsible_phone,
+                    'responsible_email': service_provider.responsible_email,
+                    'campus': service_provider.campus,
+                    'subdivision1': service_provider.subdivision1,
+                    'subdivision2': service_provider.subdivision2,
+                    'is_active': service_provider.is_active
+                }
+            }
+
+            serializer = AccountServiceProviderSerializer(data)
+            return Response(serializer.data)
+        except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
+            return Response(
+                {'error': 'Service provider информация не найдена для данного пользователя'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
     def create(self, request, *args, **kwargs):
-        """Создать поставщика услуг по аккаунту"""
+        """Создать аккаунт поставщика услуг"""
+        from apps.user.models import UserInfo
+
         data = request.data
 
+        # Проверка существования пользователя
         if User.objects.filter(login=data['login']).exists():
-            return Response({'error': 'Пользователь с таким логином уже существует'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Пользователь с таким логином уже существует'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Проверка совпадения паролей
         if data['password'] != data['password2']:
-            return Response({'error': 'Пароли не совпадают'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Пароли не совпадают'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Проверка наличия service_type
         if 'service_type' not in data or not data['service_type']:
             return Response(
                 {"error": "Тип услуги (service_type) обязателен"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        service_type = request.data.get("service_type")
-        user_role = UserRole.objects.filter(role_name=service_type)
-        if not user_role:
-            user_role = UserRole.objects.create(role_name=service_type)
+        # Проверка существования service_provider
+        service_provider_id = data.get('service_provider_id')
+        if not service_provider_id:
+            return Response(
+                {"error": "service_provider_id обязателен"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        try:
+            service_provider = ServiceProvider.objects.get(id=service_provider_id)
+        except ServiceProvider.DoesNotExist:
+            return Response(
+                {"error": "Service provider с указанным ID не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Создание или получение роли
+        service_type = data.get("service_type")
+        user_role, created = UserRole.objects.get_or_create(role_name=service_type)
+
+        # Создание пользователя
         provider = User.objects.create_user(
             login=data['login'],
             password=data['password'],
@@ -285,14 +400,111 @@ class AccountApplicationServiceProvider(viewsets.ModelViewSet):
         provider.set_password(data['password'])
         provider.save()
 
+        # Создание связи с service_provider
         user_info = UserInfo.objects.create(
             user=provider,
-            service_provider_id=request.data.get("service_provider_id")
+            service_provider_id=service_provider_id
         )
-        user_info.save()
 
-        serializer = AccountServiceProviderSerializer(provider)
+        # Формирование ответа
+        response_data = {
+            'id': provider.id,
+            'fio': provider.fio,
+            'login': provider.login,
+            'role': provider.role.role_name,
+            'is_active': provider.is_active,
+            'service_provider': {
+                'id': service_provider.id,
+                'name': service_provider.name,
+                'bin_or_iin': service_provider.bin_or_iin,
+                'service_type': service_provider.service_type,
+                'description': service_provider.description,
+                'responsible_full_name': service_provider.responsible_full_name,
+                'responsible_phone': service_provider.responsible_phone,
+                'responsible_email': service_provider.responsible_email,
+                'campus': service_provider.campus,
+                'subdivision1': service_provider.subdivision1,
+                'subdivision2': service_provider.subdivision2,
+                'is_active': service_provider.is_active
+            }
+        }
+
+        serializer = AccountServiceProviderSerializer(response_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        user.is_active = False
+        user.save()
+
+        return Response({'detail': 'Пользователь стал неактивным'}, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        from apps.user.models import UserInfo
+        from .models import ServiceProvider
+
+        user = self.get_object()
+        user_info = UserInfo.objects.filter(user=user).first()
+        service_provider = None
+        if user_info:
+            service_provider = ServiceProvider.objects.filter(id=user_info.service_provider_id).first()
+
+        serializer = AccountUpdateServiceProviderSerializer(
+            instance={
+                'service_provider_id': user_info.service_provider_id if user_info else None,
+                'responsible_full_name': service_provider.responsible_full_name if service_provider else '',
+                'service_type': service_provider.service_type if service_provider else '',
+                'login': user.login,
+                'is_active': user.is_active
+            },
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        # Обновляем поля пользователя
+        if 'service_provider_id' in validated:
+            user_info.service_provider_id = validated['service_provider_id']
+            user_info.save()
+
+        if 'login' in validated:
+            if User.objects.filter(login=validated['login']).exists() and user.login != validated['login']:
+                return Response({'detail': "Пользователь с таким номером уже существует!"}, status=status.HTTP_400_BAD_REQUEST)
+            user.login = validated['login']
+            user.save()
+
+        if 'service_type' in validated:
+            user_role = UserRole.objects.filter(role_name=validated['service_type']).first()
+            if not user_role:
+                user_role = UserRole.objects.create(role_name=validated['service_type'])
+            user.role = user_role
+            user.save()
+
+        if 'is_active' in validated:
+            user.is_active = validated['is_active']
+            user.save()
+
+        # Обновляем поля сервис-провайдера
+        if service_provider:
+            if 'responsible_full_name' in validated:
+                service_provider.responsible_full_name = validated['responsible_full_name']
+                user.fio = validated['responsible_full_name']
+            service_provider.save()
+            user.save()
+
+        # Возвращаем обновлённые данные
+        response_serializer = AccountServiceProviderSerializer({
+            'id': user.id,
+            'fio': user.fio,
+            'login': user.login,
+            'role': user.role.role_name if user.role else None,
+            'is_active': user.is_active,
+            'service_provider': service_provider
+        })
+        return Response(response_serializer.data)
+
+
 
 
 class SchoolDataViewSet(viewsets.ViewSet):
@@ -306,7 +518,7 @@ class SchoolDataViewSet(viewsets.ViewSet):
         Получить список уникальных кампусов (sSchool_name)
         GET /api/v1/school/data/campuses/
         """
-        campuses = SchoolMS.objects.using('ms_sql').values_list(
+        campuses = SchoolApplication.objects.values_list(
             'sSchool_name', flat=True
         ).distinct().order_by('sSchool_name')
 
@@ -330,7 +542,7 @@ class SchoolDataViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        subdivisions = SchoolMS.objects.using('ms_sql').filter(
+        subdivisions = SchoolApplication.objects.filter(
             sSchool_name=campus
         ).values_list('sSchool_direct', flat=True).distinct().order_by('sSchool_direct')
 
@@ -361,7 +573,7 @@ class SchoolDataViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        subdivisions = SchoolMS.objects.using('ms_sql').filter(
+        subdivisions = SchoolApplication.objects.filter(
             sSchool_name=campus,
             sSchool_direct=subdivision1
         ).values_list('sSchool_language', flat=True).distinct().order_by('sSchool_language')

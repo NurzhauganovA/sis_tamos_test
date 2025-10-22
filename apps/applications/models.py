@@ -5,6 +5,24 @@ from django.utils.translation import gettext_lazy as _
 from apps.user.models import User
 
 
+class SchoolApplication(models.Model):
+    sSchool_name = models.CharField(max_length=155, null=False)
+    sSchool_address = models.CharField(max_length=155, null=False)
+    sSchool_direct = models.CharField(max_length=155, null=False)
+    sSchool_language = models.CharField(max_length=155, null=False)
+    isSchool = models.PositiveSmallIntegerField(null=False)
+    sCommentary = models.CharField(max_length=255, null=True)
+    sBin = models.CharField(max_length=12, null=False)
+
+    def __str__(self):
+        return self.sSchool_name
+
+    class Meta:
+        verbose_name = _("Школа для заявок")
+        verbose_name_plural = _("Школы для заявок")
+        db_table = 'spr_School'
+
+
 class ServiceProvider(models.Model):
     """Юридическое лицо, предоставляющее услуги"""
     name = models.CharField(max_length=200, verbose_name=_("Наименование"))

@@ -11,8 +11,9 @@ from .serializers import (
     ApplicationStatusUpdateSerializer,
     ApplicationCommentCreateSerializer
 )
-from apps.user.models import UserRole, ParentMS
+from apps.user.models import UserRole, ParentMS, User, UserInfo
 from ..contract.models import StudentMS
+from ..sms.utils import send_sms
 
 
 class ApplicationService:
@@ -44,7 +45,7 @@ class ApplicationService:
         else:
             # Поставщики услуг видят заявки по своим услугам
             user_services = ServiceProvider.objects.filter(
-                account=user,
+                id=user.user_info.service_provider_id,
                 is_active=True
             )
             if user_services.exists():
@@ -132,6 +133,21 @@ class ApplicationCreateService:
 
         if serializer.is_valid():
             application = serializer.save()
+            service_provider = application.application_type.service_provider
+            accounts = UserInfo.objects.filter(service_provider_id=service_provider.id)
+            for account in accounts:
+                try:
+                    if str(account.user.login).startswith('+7'):
+                        recipient = account.user.login
+                    else:
+                        recipient = f'+7{account.user.login}'
+                except AttributeError:
+                    if str(account.user.phone).startswith('+7'):
+                        recipient = account.user.phone
+                    else:
+                        recipient = f'+7{account.user.phone}'
+
+                send_sms(account.user, recipient=recipient, text="Новая заявка от родителя, необходимо проверить и ответить в течение 2 часов!")
 
             # Возвращаем детальную информацию о созданной заявке
             detail_serializer = ApplicationDetailSerializer(application)

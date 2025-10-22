@@ -54,7 +54,7 @@ class ApplicationPermission(permissions.BasePermission):
 
         # Только родители могут создавать заявки
         if view.action == 'create':
-            return IsParent().has_permission(request, view)
+            return IsParent().has_permission(request, view) or IsAdminOrSuperAdmin().has_permission(request, view)
 
         # Обновление и удаление для родителей и сервис-провайдеров
         if view.action in ['update', 'partial_update', 'destroy']:

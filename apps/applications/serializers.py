@@ -42,15 +42,24 @@ class Subdivision2ListSerializer(serializers.Serializer):
 
 
 class ServiceProviderSerializer(serializers.ModelSerializer):
-    account = UserSerializer(read_only=True)
+    accounts = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceProvider
         fields = [
             'id', 'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
-            'campus', 'subdivision1', 'subdivision2', 'account', 'is_active'
+            'campus', 'subdivision1', 'subdivision2', 'accounts', 'is_active'
         ]
+
+    def get_accounts(self, obj):
+        from apps.user.models import UserInfo, User
+
+        user_ids = UserInfo.objects.filter(
+            service_provider_id=obj.id
+        ).values_list('user_id', flat=True)
+        users = User.objects.filter(id__in=user_ids)
+        return UserSerializer(users, many=True).data
 
 
 class ServiceProviderCreateSerializer(serializers.ModelSerializer):
@@ -59,7 +68,7 @@ class ServiceProviderCreateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
-            'campus', 'subdivision1', 'subdivision2', 'account'
+            'campus', 'subdivision1', 'subdivision2'
         ]
 
 
@@ -69,7 +78,18 @@ class ServiceProviderUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'name', 'bin_or_iin', 'description',
             'responsible_full_name', 'responsible_phone', 'responsible_email',
-            'campus', 'subdivision1', 'subdivision2', 'account', 'is_active'
+            'campus', 'subdivision1', 'subdivision2', 'is_active'
+        ]
+
+
+class ServiceProviderSimpleSerializer(serializers.ModelSerializer):
+    """Упрощенный сериализатор для ServiceProvider без account"""
+    class Meta:
+        model = ServiceProvider
+        fields = [
+            'id', 'name', 'bin_or_iin', 'service_type', 'description',
+            'responsible_full_name', 'responsible_phone', 'responsible_email',
+            'campus', 'subdivision1', 'subdivision2', 'is_active'
         ]
 
 
@@ -79,6 +99,7 @@ class AccountServiceProviderSerializer(serializers.Serializer):
     login = serializers.CharField()
     role = serializers.CharField()
     is_active = serializers.BooleanField()
+    service_provider = ServiceProviderSimpleSerializer(read_only=True)
 
 
 class AccountCreateServiceProviderSerializer(serializers.Serializer):
@@ -88,6 +109,14 @@ class AccountCreateServiceProviderSerializer(serializers.Serializer):
     login = serializers.CharField()
     password = serializers.CharField()
     password2 = serializers.CharField()
+
+
+class AccountUpdateServiceProviderSerializer(serializers.Serializer):
+    service_provider_id = serializers.IntegerField()
+    responsible_full_name = serializers.CharField()
+    service_type = serializers.CharField()
+    login = serializers.CharField()
+    is_active = serializers.BooleanField()
 
 
 class ApplicationCampusSerializer(serializers.Serializer):
