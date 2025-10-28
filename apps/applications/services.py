@@ -43,19 +43,24 @@ class ApplicationService:
             # Администраторы видят все заявки
             pass
         else:
-            # Поставщики услуг видят заявки по своим услугам
-            user_services = ServiceProvider.objects.filter(
-                id=user.user_info.service_provider_id,
-                is_active=True
-            )
-            if user_services.exists():
-                service_provider = user_services.first()
-                service_type_ids = user_services.values_list('application_types__id', flat=True)
-                queryset = queryset.filter(application_type_id__in=service_type_ids)
+            # Поставщики услуг видят заявки по своему типу услуг
+            try:
+                user_info = UserInfo.objects.get(user=user)
+                service_provider = ServiceProvider.objects.get(
+                    id=user_info.service_provider_id,
+                    is_active=True
+                )
 
-                if service_provider.campus:
-                    queryset = queryset.filter(campus=service_provider.campus)
-            else:
+                # Фильтруем по совпадению service_type с названием типа заявки
+                queryset = queryset.filter(
+                    application_type__service_provider=service_provider
+                )
+
+                # Дополнительная фильтрация по кампусу
+                # if service_provider.campus:
+                #     queryset = queryset.filter(campus=service_provider.campus)
+
+            except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
                 return Application.objects.none()
 
         # Применяем дополнительные фильтры
@@ -79,8 +84,7 @@ class ApplicationService:
                 search_query = filters['search']
                 queryset = queryset.filter(
                     Q(subject__icontains=search_query) |
-                    Q(description__icontains=search_query) |
-                    Q(student__full_name__icontains=search_query)
+                    Q(description__icontains=search_query)
                 )
 
         return queryset.order_by('-created_at')
@@ -109,7 +113,7 @@ class ApplicationService:
 
     @staticmethod
     def get_all_campuses():
-        # get list of all distinct campuses from Application model
+        """Получить список всех уникальных кампусов"""
         result = []
         campuses = Application.objects.values_list('campus', flat=True).distinct()
         for campus in campuses:
@@ -134,20 +138,38 @@ class ApplicationCreateService:
         if serializer.is_valid():
             application = serializer.save()
             service_provider = application.application_type.service_provider
+
+            # Отправка SMS всем пользователям, привязанным к этому service_provider
             accounts = UserInfo.objects.filter(service_provider_id=service_provider.id)
             for account in accounts:
                 try:
+                    # Форматируем номер телефона
                     if str(account.user.login).startswith('+7'):
                         recipient = account.user.login
                     else:
                         recipient = f'+7{account.user.login}'
                 except AttributeError:
-                    if str(account.user.phone).startswith('+7'):
-                        recipient = account.user.phone
-                    else:
-                        recipient = f'+7{account.user.phone}'
+                    try:
+                        if hasattr(account.user, 'phone'):
+                            if str(account.user.phone).startswith('+7'):
+                                recipient = account.user.phone
+                            else:
+                                recipient = f'+7{account.user.phone}'
+                        else:
+                            continue
+                    except:
+                        continue
 
-                send_sms(account.user, recipient=recipient, text="Новая заявка от родителя, необходимо проверить и ответить в течение 2 часов!")
+                # Отправляем SMS с информацией о новой заявке
+                try:
+                    send_sms(
+                        account.user,
+                        recipient=recipient,
+                        text=f"Новая заявка #{application.id} от родителя. Тема: {application.subject}. Необходимо проверить и ответить в течение 2 часов!"
+                    )
+                except Exception as e:
+                    # Логируем ошибку, но не прерываем выполнение
+                    print(f"Ошибка отправки SMS поставщику: {e}")
 
             # Возвращаем детальную информацию о созданной заявке
             detail_serializer = ApplicationDetailSerializer(application)
@@ -165,6 +187,34 @@ class ApplicationCreateService:
 class ApplicationStatusService:
     """Сервис для управления статусами заявок"""
 
+    def _send_status_sms_to_parent(self, application, new_status):
+        """Отправить SMS родителю при изменении статуса"""
+        parent = application.applicant
+
+        # Форматируем номер телефона
+        try:
+            if str(parent.login).startswith('+7'):
+                recipient = parent.login
+            else:
+                recipient = f'+7{parent.login}'
+        except:
+            return
+
+        # Формируем текст SMS в зависимости от статуса
+        status_messages = {
+            'in_progress': f'Ваша заявка #{application.id} "{application.subject}" принята в работу.',
+            'completed': f'Ваша заявка #{application.id} "{application.subject}" успешно завершена.',
+            'rejected': f'Ваша заявка #{application.id} "{application.subject}" отклонена. Причина: {application.rejection_reason or "не указана"}.'
+        }
+
+        text = status_messages.get(new_status)
+        if text:
+            try:
+                send_sms(parent, recipient=recipient, text=text)
+            except Exception as e:
+                # Логируем ошибку, но не прерываем выполнение
+                print(f"Ошибка отправки SMS родителю: {e}")
+
     def update_status(self, application, request):
         """Обновить статус заявки"""
         serializer = ApplicationStatusUpdateSerializer(
@@ -175,7 +225,13 @@ class ApplicationStatusService:
         )
 
         if serializer.is_valid():
+            old_status = application.status
             updated_application = serializer.save()
+            new_status = updated_application.status
+
+            # Отправляем SMS родителю при изменении статуса
+            if old_status != new_status:
+                self._send_status_sms_to_parent(updated_application, new_status)
 
             detail_serializer = ApplicationDetailSerializer(updated_application)
             return Response(detail_serializer.data)

@@ -49,7 +49,7 @@ class ApplicationPagination(PageNumberPagination):
 class ApplicationViewSet(viewsets.ModelViewSet):
     """ViewSet для работы с заявками"""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ApplicationPermission]
     pagination_class = ApplicationPagination
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'application_type']
@@ -103,6 +103,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
+        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def accept(self, request, pk=None):
         """Принять заявку в работу"""
@@ -113,6 +114,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
+        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def reject(self, request, pk=None):
         """Отклонить заявку"""
@@ -123,6 +125,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
+        permission_classes=[IsAuthenticated, ApplicationStatusPermission]
     )
     def complete(self, request, pk=None):
         """Завершить заявку"""
@@ -133,6 +136,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
+        permission_classes=[IsAuthenticated, ApplicationCommentPermission]
     )
     def add_comment(self, request, pk=None):
         """Добавить комментарий к заявке"""
@@ -153,7 +157,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     @action(
         detail=False,
         methods=['get'],
-        permission_classes=[IsAuthenticated, IsParent]
+        permission_classes=[IsAuthenticated]
     )
     def my_students(self, request):
         """Получить список студентов текущего пользователя"""
@@ -206,7 +210,7 @@ class ServiceProviderViewSet(viewsets.ModelViewSet):
 
     queryset = ServiceProvider.objects.filter(is_active=True)
     serializer_class = ServiceProviderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get_serializer_class(self):
         """Выбор сериализатора в зависимости от действия"""
@@ -225,15 +229,15 @@ class StudentApplicationViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """Получить только студентов текущего пользователя"""
-        login_format = str(self.request.user.login).split('+7')[1]
+        login_format = str(self.request.user.login).split('+7')[1] if self.request.user.login.startswith('+7') else self.request.user.login
         try:
-            return StudentMS.objects.using('ms_sql').filter(parent_id=ParentMS.objects.using('ms_sql').filter(phone=login_format).first().id)
-        except AttributeError:
             parent = ParentMS.objects.using('ms_sql').filter(phone=login_format).first()
             if parent:
                 return StudentMS.objects.using('ms_sql').filter(parent_id=parent.id)
             else:
                 return StudentMS.objects.using('ms_sql').none()
+        except Exception:
+            return StudentMS.objects.using('ms_sql').none()
 
 
 class AccountApplicationServiceProvider(viewsets.ModelViewSet):

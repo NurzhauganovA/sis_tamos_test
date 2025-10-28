@@ -1,6 +1,6 @@
 from rest_framework import permissions
 from .models import Application, ServiceProvider
-from apps.user.models import UserRole
+from apps.user.models import UserRole, UserInfo
 
 
 class IsParent(permissions.BasePermission):
@@ -24,21 +24,30 @@ class IsServiceProvider(permissions.BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        if request.user.role.role_name != "Поставщик":
-            return False
+        try:
+            user_info = UserInfo.objects.get(user=request.user)
+            if user_info.service_provider_id:
+                return ServiceProvider.objects.filter(
+                    id=user_info.service_provider_id,
+                    is_active=True
+                ).exists()
+        except UserInfo.DoesNotExist:
+            pass
 
-        # Проверяем, является ли пользователь ответственным за какую-либо услугу
-        return ServiceProvider.objects.filter(
-            responsible_person=request.user,
-            is_active=True
-        ).exists()
+        return False
 
 
 class IsAdminOrSuperAdmin(permissions.BasePermission):
     """Разрешение для администраторов"""
 
     def has_permission(self, request, view):
-        return request.user.role.role_name == 'Суперадмин' or request.user.role.role_name == 'Администратор'
+        if not request.user.is_authenticated:
+            return False
+
+        if not request.user.role:
+            return False
+
+        return request.user.role.role_name in ['Суперадмин', 'Администратор']
 
 
 class ApplicationPermission(permissions.BasePermission):
@@ -48,18 +57,24 @@ class ApplicationPermission(permissions.BasePermission):
         if not request.user.is_authenticated:
             return False
 
-        # Все аутентифицированные пользователи могут просматривать список
+        # Просмотр списка и деталей доступен всем аутентифицированным
         if view.action in ['list', 'retrieve']:
             return True
 
-        # Только родители могут создавать заявки
+        # Создавать заявки могут: Родитель, Администратор, Суперадмин
         if view.action == 'create':
-            return IsParent().has_permission(request, view) or IsAdminOrSuperAdmin().has_permission(request, view)
+            return (IsParent().has_permission(request, view) or
+                    IsAdminOrSuperAdmin().has_permission(request, view))
 
-        # Обновление и удаление для родителей и сервис-провайдеров
+        # Обновление и удаление
         if view.action in ['update', 'partial_update', 'destroy']:
             return (IsParent().has_permission(request, view) or
                     IsServiceProvider().has_permission(request, view) or
+                    IsAdminOrSuperAdmin().has_permission(request, view))
+
+        # Действия со статусами (accept, reject, complete)
+        if view.action in ['accept', 'reject', 'complete']:
+            return (IsServiceProvider().has_permission(request, view) or
                     IsAdminOrSuperAdmin().has_permission(request, view))
 
         return False
@@ -74,20 +89,32 @@ class ApplicationPermission(permissions.BasePermission):
 
         # Родители могут работать только со своими заявками
         if IsParent().has_permission(request, view):
-            if view.action in ['retrieve', 'update', 'partial_update']:
+            if view.action == 'retrieve':
                 return obj.applicant == request.user
+            if view.action in ['update', 'partial_update']:
+                # Родители могут редактировать только новые заявки
+                return obj.applicant == request.user and obj.status == 'new'
             if view.action == 'destroy':
                 # Родители могут удалять только новые заявки
                 return obj.applicant == request.user and obj.status == 'new'
 
-        # Поставщики услуг могут работать с заявками по своим услугам
+        # Поставщики услуг могут работать с заявками по своему типу услуг
         if IsServiceProvider().has_permission(request, view):
-            user_services = ServiceProvider.objects.filter(
-                responsible_person=request.user,
-                is_active=True
-            )
-            service_types = user_services.values_list('application_types', flat=True)
-            return obj.application_type_id in service_types
+            try:
+                user_info = UserInfo.objects.get(user=request.user)
+                service_provider = ServiceProvider.objects.get(
+                    id=user_info.service_provider_id,
+                    is_active=True
+                )
+
+                # Проверяем совпадение service_type и application_type
+                application_type = obj.application_type
+
+                # Поставщик имеет доступ, если service_type совпадает с названием типа заявки
+                return service_provider == application_type.service_provider
+
+            except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
+                return False
 
         return False
 
@@ -112,12 +139,19 @@ class ApplicationStatusPermission(permissions.BasePermission):
 
         # Поставщики услуг могут изменять статусы своих заявок
         if IsServiceProvider().has_permission(request, view):
-            user_services = ServiceProvider.objects.filter(
-                responsible_person=request.user,
-                is_active=True
-            )
-            service_types = user_services.values_list('application_types', flat=True)
-            return obj.application_type_id in service_types
+            try:
+                user_info = UserInfo.objects.get(user=request.user)
+                service_provider = ServiceProvider.objects.get(
+                    id=user_info.service_provider_id,
+                    is_active=True
+                )
+
+                # Проверяем совпадение service_type и application_type
+                application_type = obj.application_type
+                return service_provider == application_type.service_provider
+
+            except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
+                return False
 
         return False
 
@@ -145,13 +179,19 @@ class ApplicationCommentPermission(permissions.BasePermission):
         if application.applicant == request.user:
             return True
 
-        # Поставщики услуг могут комментировать заявки по своим услугам
+        # Поставщики услуг могут комментировать заявки по своему типу
         if IsServiceProvider().has_permission(request, view):
-            user_services = ServiceProvider.objects.filter(
-                responsible_person=request.user,
-                is_active=True
-            )
-            service_types = user_services.values_list('application_types', flat=True)
-            return application.application_type_id in service_types
+            try:
+                user_info = UserInfo.objects.get(user=request.user)
+                service_provider = ServiceProvider.objects.get(
+                    id=user_info.service_provider_id,
+                    is_active=True
+                )
+
+                application_type = application.application_type
+                return service_provider == application_type.service_provider
+
+            except (UserInfo.DoesNotExist, ServiceProvider.DoesNotExist):
+                return False
 
         return False
